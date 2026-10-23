@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Store, UserRoundCheck, ShieldCheck, BadgeCheck, CircleX, Activity,
@@ -6,7 +6,7 @@ import {
   LineChart as LineChartIcon, PieChart as PieChartIcon, BarChart3,
   Gauge, History, Trophy, BellRing, ArrowRight, ChevronRight,
   Fingerprint, Landmark, CreditCard, FileSignature, HandCoins,
-  AlertTriangle, FileCheck2, TrendingUp, TrendingDown
+  AlertTriangle, FileCheck2, TrendingUp, TrendingDown, X, Eye, EyeOff, RefreshCw, CheckCircle2
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
@@ -128,7 +128,7 @@ function TrendPanel({ navigate }) {
         subtitle="Verified vs failed requests · last 6 months"
         action={<button onClick={() => navigate("/super-admin/reports")} className="flex items-center gap-2 text-[13px] font-semibold text-[#20365e] hover:text-[#2451ea]">Monthly report <ArrowRight size={17} /></button>}
       />
-      <div className="mt-7 h-[300px] w-full">
+      <div className="mt-5 h-[250px] w-full min-w-0 sm:mt-7 sm:h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={monthly} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
             <defs>
@@ -156,7 +156,7 @@ function CategoryPanel() {
   return (
     <section className={`${card} p-5 sm:p-6`}>
       <SectionTitle icon={PieChartIcon} title="Category distribution" subtitle="Share of all verifications by service" />
-      <div className="relative mx-auto mt-4 h-[235px] max-w-[310px]">
+      <div className="relative mx-auto mt-4 h-[210px] max-w-[310px] sm:h-[235px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={categories} dataKey="value" cx="50%" cy="50%" innerRadius={85} outerRadius={116} paddingAngle={2} startAngle={90} endAngle={-270} stroke="white" strokeWidth={2}>
@@ -192,7 +192,7 @@ function RevenuePanel() {
           <div><p className={muted}>Margin %</p><p className="text-[19px] font-bold text-[#101b3b]">58.5%</p></div>
         </div>}
       />
-      <div className="mt-7 h-[300px] w-full">
+      <div className="mt-5 h-[250px] w-full min-w-0 sm:mt-7 sm:h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={monthly} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid stroke="#e2e8f2" vertical={false} />
@@ -334,19 +334,157 @@ function AlertsPanel({ navigate }) {
   );
 }
 
+
+// These dialogs are frontend demos. No money is moved and no real account is created.
+const retailerOptions = [
+  "Annapurna Finserv Kendra · RT1003",
+  "Shree Ganesh Mobile Point · RT1001",
+  "Balaji Online Seva · RT1002",
+  "Royal Enterprises · RT1004",
+  "Green Valley Traders · RT1005",
+  "Metro Fintech Hub · RT1006",
+];
+
+function createReference() {
+  return "VHCR" + Date.now().toString(36).toUpperCase().slice(-9);
+}
+
+function DialogShell({ title, subtitle, icon: Icon, onClose, children, footer, wide = false }) {
+  useEffect(() => {
+    const keydown = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", keydown);
+    const old = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", keydown); document.body.style.overflow = old; };
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#0c1732]/55 p-0 backdrop-blur-[3px] sm:items-center sm:p-3" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`flex max-h-[96dvh] w-full min-w-0 flex-col overflow-hidden rounded-t-[20px] bg-white shadow-2xl sm:max-h-[min(92vh,900px)] sm:rounded-[20px] ${wide ? "max-w-[975px]" : "max-w-[725px]"}`}>
+        <div className="flex shrink-0 items-start gap-3 border-b border-[#e2e8f2] px-4 py-4 sm:gap-4 sm:px-7 sm:py-6">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#2451ea] sm:h-[50px] sm:w-auto sm:min-w-[100px] sm:flex-1"><Icon size={22}/></div>
+          <div className="min-w-0 flex-1 sm:flex-[1.1]"><h2 className="text-[17px] font-bold text-[#101b3b] sm:text-[21px]">{title}</h2><p className="mt-1 text-[12px] leading-5 text-[#344b73] sm:text-[14px] sm:leading-6">{subtitle}</p></div>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-2 text-[#152344] hover:bg-[#f2f5fb]"><X size={20}/></button>
+        </div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-6">{children}</div>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[#e2e8f2] bg-[#f8fafd] px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:gap-3 sm:px-7 sm:py-4 [&>button]:min-w-0 [&>button]:flex-1 sm:[&>button]:flex-none">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+const fieldLabel = "mb-2 flex items-center justify-between text-[13px] font-semibold text-[#263b61]";
+const fieldClass = "h-[51px] w-full rounded-xl border border-[#ccd7ea] bg-white px-4 text-[14px] text-[#101b3b] outline-none transition focus:border-[#2850e8] focus:ring-2 focus:ring-[#2850e8]/15";
+const primaryBtn = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#2850e8] px-5 text-[13px] font-semibold text-white hover:bg-[#1e40bf]";
+const secondaryBtn = "inline-flex min-h-11 items-center justify-center rounded-xl border border-[#ccd7ea] bg-white px-5 text-[13px] font-semibold text-[#101b3b] hover:bg-[#f1f5fb]";
+
+function WalletDialog({ onClose, onSaved }) {
+  const [retailer, setRetailer] = useState(retailerOptions[0]);
+  const [type, setType] = useState("credit");
+  const [amount, setAmount] = useState("");
+  const [mode, setMode] = useState("NEFT");
+  const [reference, setReference] = useState(createReference);
+  const [remarks, setRemarks] = useState("");
+  const [review, setReview] = useState(false);
+  const [error, setError] = useState("");
+  const validate = () => {
+    const n = Number(amount);
+    if (!retailer || !Number.isFinite(n) || n <= 0) { setError("Please select a retailer and enter an amount greater than ₹0."); return; }
+    if (!reference.trim()) { setError("Transaction reference number is required."); return; }
+    setError(""); setReview(true);
+  };
+  const save = () => {
+    const transaction = { id: reference.trim(), retailer, type, amount: Number(amount), mode, remarks: remarks.trim(), createdAt: new Date().toISOString() };
+    try {
+      const existing = JSON.parse(localStorage.getItem("verifyhub-demo-wallet-adjustments") || "[]");
+      localStorage.setItem("verifyhub-demo-wallet-adjustments", JSON.stringify([transaction, ...existing]));
+    } catch { localStorage.setItem("verifyhub-demo-wallet-adjustments", JSON.stringify([transaction])); }
+    onSaved(`${type === "credit" ? "Credit" : "Debit"} of ₹${Number(amount).toLocaleString("en-IN")} saved as a demo transaction.`);
+  };
+  return (
+    <DialogShell title="Wallet adjustment" subtitle="Credit or debit a retailer wallet. Demo only — no real money moves." icon={Wallet} onClose={onClose}
+      footer={<><button className={secondaryBtn} onClick={review ? () => setReview(false) : onClose}>{review ? "Back to edit" : "Cancel"}</button><button className={primaryBtn} onClick={review ? save : validate}><ShieldCheck size={17}/>{review ? "Confirm demo adjustment" : "Review & confirm"}</button></>}>
+      {review ? (
+        <div className="space-y-4">
+          <p className="rounded-xl bg-[#eef2ff] p-4 text-[13px] text-[#263b61]">Please review the details below. Confirming saves a <strong>local demo transaction only</strong>.</p>
+          {[["Retailer", retailer],["Adjustment", type === "credit" ? "Add balance (Credit)" : "Deduct (Debit)"],["Amount", `₹${Number(amount).toLocaleString("en-IN")}`],["Payment mode", mode],["Reference", reference],["Remarks", remarks || "—"]].map(([label, value]) => <div key={label} className="flex justify-between gap-4 border-b border-[#edf1f7] py-2 text-[13px]"><span className="text-[#7082a3]">{label}</span><strong className="text-right text-[#101b3b]">{value}</strong></div>)}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div><label className={fieldLabel}>Retailer <span className="text-red-600">*</span></label><select className={fieldClass} value={retailer} onChange={(e) => setRetailer(e.target.value)}>{retailerOptions.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div className="grid grid-cols-1 gap-1 rounded-xl bg-[#edf1f7] p-1 min-[420px]:grid-cols-2">
+            {[["credit","Add balance (Credit)"],["debit","Deduct (Debit)"]].map(([value,label]) => <button type="button" key={value} onClick={() => setType(value)} className={`min-h-[46px] rounded-lg text-[13px] font-semibold transition ${type === value ? "bg-white text-[#008743] shadow-sm" : "text-[#243b64] hover:bg-white/50"}`}>{label}</button>)}
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div><label className={fieldLabel}>Amount <span className="text-red-600">*</span></label><div className="flex"><span className="flex h-[51px] items-center rounded-l-xl border border-r-0 border-[#ccd7ea] bg-[#f8fafd] px-4 text-[#243b64]">₹</span><input type="number" min="1" step="1" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${fieldClass} rounded-l-none`} /></div>
+              <div className="mt-3 flex flex-wrap gap-2">{[500,1000,2000,5000,10000].map((n) => <button key={n} type="button" onClick={() => setAmount(String(n))} className="rounded-full border border-[#ccd7ea] px-3 py-1.5 text-[12px] font-medium text-[#243b64] hover:border-[#2850e8] hover:bg-[#eef2ff]">₹{n.toLocaleString("en-IN")}</button>)}</div>
+            </div>
+            <div><label className={fieldLabel}>Payment mode</label><select className={fieldClass} value={mode} onChange={(e) => setMode(e.target.value)}>{["NEFT","IMPS","RTGS","UPI","Cash","Manual adjustment"].map((m) => <option key={m}>{m}</option>)}</select></div>
+          </div>
+          <div><label className={fieldLabel}>Transaction reference number <span className="text-red-600">*</span></label><div className="flex gap-2"><input className={`${fieldClass} font-mono`} value={reference} onChange={(e) => setReference(e.target.value)} /><button title="Generate new reference" type="button" onClick={() => setReference(createReference())} className="rounded-xl border border-[#ccd7ea] px-4 text-[#2850e8] hover:bg-[#eef2ff]"><RefreshCw size={18}/></button></div></div>
+          <div><label className={fieldLabel}>Remarks <span className="font-normal text-[#7082a3]">Optional</span></label><textarea rows={3} className={`${fieldClass} h-auto resize-y py-3`} placeholder="e.g. Top-up against bank transfer" value={remarks} onChange={(e) => setRemarks(e.target.value)}/></div>
+          {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-[12px] text-red-700">{error}</p>}
+        </div>
+      )}
+    </DialogShell>
+  );
+}
+
+function RetailerDialog({ onClose, onSaved }) {
+  const [form, setForm] = useState({ business:"", owner:"", mobile:"", email:"", address:"", pan:"", gst:"", password:"", status:"Active" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const submit = (e) => {
+    e.preventDefault();
+    const { business, owner, mobile, email, address, pan, gst, password } = form;
+    if (![business,owner,mobile,email,address,pan,password].every((v) => v.trim())) { setError("Please fill all required fields."); return; }
+    if (!/^[6-9]\d{9}$/.test(mobile)) { setError("Enter a valid 10-digit Indian mobile number."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Enter a valid email address."); return; }
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase())) { setError("Enter a valid PAN number (e.g. ABCPK1234L)."); return; }
+    if (gst && !/^\d{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gst.toUpperCase())) { setError("Enter a valid GST number or leave it blank."); return; }
+    if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) { setError("Password must have at least 8 characters, including letters and numbers."); return; }
+    const entry = { id: "RT" + Date.now().toString().slice(-6), business, owner, mobile, email, address, panMasked: pan.slice(0,2).toUpperCase() + "XXXXXX" + pan.slice(-2).toUpperCase(), gstMasked: gst ? gst.slice(0,2) + "XXXXXXXX" + gst.slice(-3) : "", status: form.status, createdAt: new Date().toISOString() };
+    // Password is deliberately not saved to localStorage. Real account creation requires a backend.
+    try { const old = JSON.parse(localStorage.getItem("verifyhub-demo-retailers") || "[]"); localStorage.setItem("verifyhub-demo-retailers", JSON.stringify([entry, ...old])); }
+    catch { localStorage.setItem("verifyhub-demo-retailers", JSON.stringify([entry])); }
+    onSaved(`${business} added to local demo retailers. Backend login credentials have not been created.`);
+  };
+  return (
+    <DialogShell wide title="Add new retailer" subtitle="Create a partner account with dashboard login credentials." icon={UserRoundPlus} onClose={onClose}
+      footer={<><button type="button" onClick={onClose} className={secondaryBtn}>Cancel</button><button type="submit" form="retailer-create-form" className={primaryBtn}><UserRoundPlus size={17}/>Create retailer</button></>}>
+      <form id="retailer-create-form" onSubmit={submit} className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+        <div><label className={fieldLabel}>Business / shop name <span className="text-red-600">*</span></label><input autoFocus className={fieldClass} value={form.business} onChange={(e) => set("business",e.target.value)} placeholder="e.g. Shree Ganesh Mobile Point"/></div>
+        <div><label className={fieldLabel}>Owner name <span className="text-red-600">*</span></label><input className={fieldClass} value={form.owner} onChange={(e) => set("owner",e.target.value)} placeholder="Full name as per PAN"/></div>
+        <div><label className={fieldLabel}>Mobile number <span className="text-red-600">*</span></label><div className="flex"><span className="flex h-[51px] items-center rounded-l-xl border border-r-0 border-[#ccd7ea] bg-[#f8fafd] px-3 text-[13px] font-semibold">+91</span><input inputMode="numeric" maxLength={10} className={`${fieldClass} rounded-l-none`} value={form.mobile} onChange={(e) => set("mobile",e.target.value.replace(/\D/g,""))} placeholder="10-digit mobile"/></div></div>
+        <div><label className={fieldLabel}>Email address <span className="text-red-600">*</span></label><input type="email" className={fieldClass} value={form.email} onChange={(e) => set("email",e.target.value)} placeholder="owner@business.in"/></div>
+        <div className="sm:col-span-2"><label className={fieldLabel}>Business address <span className="text-red-600">*</span></label><textarea rows={3} className={`${fieldClass} h-auto resize-y py-3`} value={form.address} onChange={(e) => set("address",e.target.value)} placeholder="Shop no., street, city, state - PIN"/></div>
+        <div><label className={fieldLabel}>PAN number <span className="text-red-600">*</span></label><input maxLength={10} className={`${fieldClass} uppercase`} value={form.pan} onChange={(e) => set("pan",e.target.value.toUpperCase())} placeholder="ABCPK1234L"/><p className="mt-1 text-[11px] text-[#7a8bad]">Stored masked in demo listings.</p></div>
+        <div><label className={fieldLabel}>GST number <span className="font-normal text-[#7082a3]">Optional</span></label><input maxLength={15} className={`${fieldClass} uppercase`} value={form.gst} onChange={(e) => set("gst",e.target.value.toUpperCase())} placeholder="24ABCPK1234L1Z5"/></div>
+        <div><label className={fieldLabel}>Login password <span className="text-red-600">*</span></label><div className="relative"><input type={showPassword ? "text" : "password"} className={`${fieldClass} pr-12`} value={form.password} onChange={(e) => set("password",e.target.value)} placeholder="Min. 8 chars, letters & numbers"/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-[#263b61]">{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></div>
+        <div><label className={fieldLabel}>Retailer status</label><select className={fieldClass} value={form.status} onChange={(e) => set("status",e.target.value)}><option value="Active">Active — can log in</option><option value="Inactive">Inactive — login disabled</option><option value="Pending">Pending approval</option></select></div>
+        {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-[12px] text-red-700 sm:col-span-2">{error}</p>}
+        <p className="text-[11px] leading-5 text-[#7a8bad] sm:col-span-2">Frontend demo: this saves a masked retailer record in this browser only. It does not create a real login account or transmit credentials.</p>
+      </form>
+    </DialogShell>
+  );
+}
+
 export default function Overview() {
   const navigate = useNavigate();
+  const [activeDialog, setActiveDialog] = useState(null);
+  const [toast, setToast] = useState("");
+  const finish = (message) => { setActiveDialog(null); setToast(message); };
   return (
-    <div className="min-h-screen bg-[#f3f6fc] px-4 py-6 font-['Poppins',sans-serif] sm:px-6 lg:px-7">
+    <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#f3f6fc] px-3 py-5 font-['Poppins',sans-serif] sm:px-6 lg:px-7">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[25px] font-bold tracking-tight text-[#101b3b] sm:text-[28px]">Good afternoon, Arvind</h1>
           <p className="mt-1.5 text-[13px] text-[#43577c]">Platform performance across 12 retailers · Friday, 23 October 2026</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => navigate("/super-admin/reports")} className="inline-flex h-11 items-center gap-2 rounded-lg border border-[#d5deed] bg-white px-4 text-[12px] font-semibold text-[#101b3b] shadow-sm hover:bg-[#f9fbff]"><FileBarChart size={17} />View reports</button>
-          <button onClick={() => navigate("/super-admin/wallet")} className="inline-flex h-11 items-center gap-2 rounded-lg border border-[#d5deed] bg-white px-4 text-[12px] font-semibold text-[#101b3b] shadow-sm hover:bg-[#f9fbff]"><Wallet size={17} />Add balance</button>
-          <button onClick={() => navigate("/super-admin/retailers")} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#2850e8] px-4 text-[12px] font-semibold text-white shadow-sm hover:bg-[#1c3ec6]"><UserRoundPlus size={17} />Add retailer</button>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <button onClick={() => navigate("/super-admin/reports")} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#d5deed] bg-white px-2 text-[11px] sm:px-4 sm:text-[12px] font-semibold text-[#101b3b] shadow-sm hover:bg-[#f9fbff]"><FileBarChart size={17} />View reports</button>
+          <button onClick={() => setActiveDialog("wallet")} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#d5deed] bg-white px-2 text-[11px] sm:px-4 sm:text-[12px] font-semibold text-[#101b3b] shadow-sm hover:bg-[#f9fbff]"><Wallet size={17} />Add balance</button>
+          <button onClick={() => setActiveDialog("retailer")} className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#2850e8] px-4 text-[12px] sm:col-span-1 font-semibold text-white shadow-sm hover:bg-[#1c3ec6]"><UserRoundPlus size={17} />Add retailer</button>
         </div>
       </div>
 
@@ -371,6 +509,9 @@ export default function Overview() {
           <AlertsPanel navigate={navigate} />
         </div>
       </div>
+      {activeDialog === "wallet" && <WalletDialog onClose={() => setActiveDialog(null)} onSaved={finish} />}
+      {activeDialog === "retailer" && <RetailerDialog onClose={() => setActiveDialog(null)} onSaved={finish} />}
+      {toast && <div role="status" className="fixed bottom-4 left-4 right-4 z-[110] sm:bottom-5 sm:left-auto sm:right-5 flex max-w-[430px] items-start gap-3 rounded-xl border border-[#bdebd0] bg-white p-4 text-[13px] text-[#115c37] shadow-xl"><CheckCircle2 className="shrink-0" size={20}/><span>{toast}</span><button aria-label="Dismiss" onClick={() => setToast("")}><X size={16}/></button></div>}
     </div>
   );
 }
