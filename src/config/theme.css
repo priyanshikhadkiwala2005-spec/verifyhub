@@ -1,0 +1,35 @@
+
+:root {
+  /* Brand Colors */
+  --brand-primary: #2851e8;
+  --brand-primary-hover: #1d40ca;
+  --brand-primary-light: #edf2ff;
+
+  /* Navy Colors */
+  --brand-navy: #0c183b;
+  --brand-navy-deep: #08132e;
+  --brand-navy-card: #192b55;
+
+  /* Background Colors */
+  --app-background: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-muted: #f3f6fb;
+
+  /* Text Colors */
+  --app-text: #091634;
+  --app-text-secondary: #667da5;
+  --app-text-muted: #93a4c3;
+
+  /* Border Colors */
+  --app-border: #d5def0;
+
+  /* Status Colors */
+  --status-success: #10965b;
+  --status-danger: #dc3545;
+  --status-warning: #e7a12d;
+
+  /* Border Radius */
+  --radius-card: 14px;
+  --radius-input: 10px;
+  --radius-button: 10px;
+}
