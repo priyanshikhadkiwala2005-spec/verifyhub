@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../../api";
 import {
   ShieldCheck,
   Shield,
@@ -121,18 +122,62 @@ export default function Login() {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault();
     setMessage("");
     if (!validateForm()) return;
+
     setLoading(true);
-    // Frontend demo navigation only. Backend authentication is not connected yet.
-    if (role === "admin") {
-      navigate("/super-admin/overview");
-    } else {
-      navigate("/retailer/overview", { replace: true });
+
+    try {
+      const endpoint =
+        role === "admin" ? "/auth/admin/login" : "/auth/retailer/login";
+
+      const payload =
+        role === "admin"
+          ? {
+              email: form.email,
+              password: form.password,
+            }
+          : {
+              identifier: form.email,
+              password: form.password,
+            };
+
+      const response = await api.post(endpoint, payload);
+      const token = response?.data?.data?.access_token;
+      const user = response?.data?.data?.user;
+
+      if (!token) {
+        throw new Error("No access token received from server.");
+      }
+
+      localStorage.setItem("verifyhub_token", token);
+      if (user) {
+        localStorage.setItem("verifyhub_user", JSON.stringify(user));
+      }
+
+      setMessage("Login successful");
+
+      if (role === "admin") {
+        navigate("/super-admin/overview");
+      } else {
+        navigate("/retailer/overview", { replace: true });
+      }
+    } catch (error) {
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Login failed. Please try again.";
+
+      setMessage(serverMessage);
+      setErrors({
+        email: "",
+        password: "",
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
   // Open forgot password modal
   const openForgotPassword = () => {
