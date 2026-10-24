@@ -11,7 +11,7 @@
   --brand-navy-card: #192b55;
 
   /* Background Colors */
-  --app-background: #ffffff;
+  --app-background: #f4f6fc;
   --app-surface: #ffffff;
   --app-surface-muted: #f3f6fb;
 
@@ -32,4 +32,31 @@
   --radius-card: 14px;
   --radius-input: 10px;
   --radius-button: 10px;
+}
+
+/* Dark Mode */
+html.dark {
+  --brand-primary: #5275ff;
+  --brand-primary-hover: #7190ff;
+  --brand-primary-light: #202e52;
+
+  --brand-navy: #0c183b;
+  --brand-navy-deep: #08132e;
+  --brand-navy-card: #192b55;
+
+  --app-background: #202b40;
+  --app-surface: #151f31;
+  --app-surface-muted: #1c2940;
+
+  --app-text: #f5f7ff;
+  --app-text-secondary: #aab9d5;
+  --app-text-muted: #8495b5;
+
+  --app-border: #33425e;
+
+  --status-success: #4bd59b;
+  --status-danger: #ff6b7b;
+  --status-warning: #ffcc70;
+
+  color-scheme: dark;
 }

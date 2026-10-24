@@ -28,7 +28,7 @@ const menuGroups = [
       { label: "Retailers", path: "/super-admin/retailers", icon: Store },
       { label: "KYC Services", path: "/super-admin/kyc-services", icon: ShieldCheck },
       { label: "Pricing", path: "/super-admin/pricing", icon: Tags },
-      { label: "Wallet", path: "/super-admin/wallet", icon: Wallet, count: 2 },
+      { label: "Wallet", path: "/super-admin/wallet", icon: Wallet},
     ],
   },
   {
@@ -67,7 +67,7 @@ export default function Sidebar({
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-white/10 bg-[#0d193b] text-[#bdc9e6] transition-all duration-300
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-          ${collapsed ? "lg:w-[82px]" : "lg:w-[312px]"}
+          ${collapsed ? "lg:w-[82px]" : "lg:w-[250px]"}
           w-[290px] lg:translate-x-0`}
       >
         {/* Logo */}
@@ -119,7 +119,7 @@ export default function Sidebar({
         )}
 
         {/* Navigation */}
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-5">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {menuGroups.map((group) => (
             <div key={group.title} className="mb-5">
               {!collapsed && (

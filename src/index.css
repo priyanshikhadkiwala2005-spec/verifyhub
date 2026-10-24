@@ -4,6 +4,9 @@
 @import "tailwindcss";
 @import "./config/theme.css";
 
+/* Enable Tailwind v4 dark: utilities */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Tailwind Theme Configuration */
 @theme inline {
   --color-primary: var(--brand-primary);
@@ -37,6 +40,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  color-scheme: light;
 }
 
 * {
@@ -53,6 +57,7 @@ body {
   min-height: 100vh;
   background: var(--app-background);
   color: var(--app-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button,
@@ -72,4 +77,135 @@ button:disabled {
 
 #root {
   min-height: 100vh;
+}
+
+/* =========================================
+   VERIFYHUB DARK MODE
+   ========================================= */
+
+/* Shared semantic colors */
+html.dark {
+  color-scheme: dark;
+
+  --app-background: #0b1220;
+  --app-surface: #151e30;
+  --app-surface-muted: #202c41;
+
+  --app-text: #f1f5fd;
+  --app-text-secondary: #aab8d0;
+  --app-text-muted: #8495af;
+
+  --app-border: #303d53;
+
+  --brand-primary-light: #22355f;
+}
+
+/* Base dark appearance */
+html.dark body,
+html.dark #root {
+  background-color: var(--app-background);
+  color: var(--app-text);
+}
+
+/* Smooth appearance change */
+html.dark button,
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color-scheme: dark;
+}
+
+/* Existing hard-coded light surfaces */
+html.dark .bg-white {
+  background-color: #151e30;
+}
+
+html.dark .bg-\[\#f4f6fd\],
+html.dark .bg-\[\#f8faff\] {
+  background-color: #0b1220;
+}
+
+html.dark .bg-\[\#f1f4fa\],
+html.dark .bg-\[\#f4f6fc\],
+html.dark .bg-\[\#f0f3f9\] {
+  background-color: #202c41;
+}
+
+/* Existing hard-coded dark text */
+html.dark .text-\[\#101a33\],
+html.dark .text-\[\#111a32\],
+html.dark .text-\[\#111c37\],
+html.dark .text-\[\#121c35\],
+html.dark .text-\[\#14203b\],
+html.dark .text-\[\#17213b\],
+html.dark .text-\[\#172442\],
+html.dark .text-\[\#182440\],
+html.dark .text-\[\#1d2a48\],
+html.dark .text-\[\#233354\] {
+  color: #f1f5fd;
+}
+
+/* Existing secondary text */
+html.dark .text-\[\#475779\],
+html.dark .text-\[\#4e5e7e\],
+html.dark .text-\[\#52617e\],
+html.dark .text-\[\#536587\],
+html.dark .text-\[\#566788\],
+html.dark .text-\[\#687894\],
+html.dark .text-\[\#8492ac\],
+html.dark .text-\[\#8795b0\],
+html.dark .text-\[\#8a98b3\],
+html.dark .text-\[\#8a99b5\] {
+  color: #aab8d0;
+}
+
+/* Common borders */
+html.dark .border-\[\#d3dced\],
+html.dark .border-\[\#dfe6f2\],
+html.dark .border-\[\#e1e7f1\],
+html.dark .border-\[\#e2e8f0\],
+html.dark .border-\[\#e2e8f1\],
+html.dark .border-\[\#e7edf5\],
+html.dark .border-\[\#e8edf5\] {
+  border-color: #303d53;
+}
+
+/* Form elements */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #202c41;
+  border-color: #35435a;
+  color: #f1f5fd;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #8798b2;
+}
+
+html.dark input:disabled,
+html.dark textarea:disabled,
+html.dark select:disabled {
+  background-color: #283247;
+  color: #94a3b8;
+}
+
+/* Scrollbar */
+html.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #151e30;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #46546b;
+  border-radius: 10px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #60718d;
 }
