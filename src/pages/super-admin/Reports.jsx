@@ -17,7 +17,7 @@ const TABS = [
   { id: "revenue", name: "Revenue", icon: IndianRupee },
   { id: "wallet", name: "Wallet transactions", icon: ArrowLeftRight },
 ];
-const BLUE = "#2d50e7", RED = "#e23d45", AMBER = "#e39810", GREEN = "#07965a";
+const BLUE = "#5275ff", RED = "#e23d45", AMBER = "#e39810", GREEN = "#07965a";
 const DAY = 86400000;
 const formatDate = (date) => date.toISOString().slice(0, 10);
 const dateLabel = (value, short = false) => new Date(`${value}T12:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", ...(short ? {} : { year: "numeric" }) });
@@ -68,10 +68,10 @@ function csvDownload(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-const card = "rounded-2xl border border-[#dfe5f1] bg-white shadow-[0_1px_3px_rgba(21,37,75,.06)]";
-const small = "text-[12px] font-semibold uppercase tracking-[.035em] text-[#8b98b2]";
-const th = "whitespace-nowrap px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[.035em] text-[#8b98b2]";
-const td = "whitespace-nowrap border-t border-[#e4eaf4] px-4 py-4 text-[13px] text-[#17213e]";
+const card = "rounded-2xl border border-app-border bg-app-surface shadow-[0_1px_3px_rgba(21,37,75,.06)]";
+const small = "text-[12px] font-semibold uppercase tracking-[.035em] text-app-text-muted";
+const th = "whitespace-nowrap px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[.035em] text-app-text-muted";
+const td = "whitespace-nowrap border-t border-app-border px-4 py-4 text-[13px] text-app-text";
 
 export default function Reports() {
   const [tab, setTab] = useState("daily");
@@ -79,9 +79,8 @@ export default function Reports() {
   const [end, setEnd] = useState(rangeEnd);
   const [preset, setPreset] = useState("30D");
   const [page, setPage] = useState(1);
-  const [banner, setBanner] = useState(true);
-  const [toast, setToast] = useState("");
-  const [generated, setGenerated] = useState("23 Oct 2026, 09:12 pm");
+    const [toast, setToast] = useState("");
+  const generated = "23 Oct 2026, 09:12 pm";
 
   const changeTab = (value) => { setTab(value); setPage(1); };
   const selectPreset = (value) => {
@@ -155,60 +154,106 @@ export default function Reports() {
   const cols = tab === "revenue" ? ["DATE", "VERIFICATIONS", "GROSS REVENUE", "PROVIDER COST", "GROSS MARGIN", "MARGIN %"] : tab === "wallet" ? ["DATE", "TRANSACTIONS", "CREDITS", "DEBITS", "NET MOVEMENT"] : [tab === "daily" ? "DATE" : tab === "monthly" ? "MONTH" : tab === "retailer" ? "RETAILER" : "SERVICE", "TOTAL", "VERIFIED", "FAILED", "PENDING", "SUCCESS %", "BILLED"];
 
   return (
-    <div className="min-w-0 bg-[#f3f5fb] text-[#111b36] print:bg-white">
+    <div className="min-w-0 bg-app-background text-app-text print:bg-white">
      
       <div className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:px-7 lg:py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><h1 className="text-[24px] font-bold tracking-[-.025em] sm:text-[27px]">Reports &amp; analytics</h1><p className="mt-1 text-[13px] text-[#536383] sm:text-[14px]">Operational, financial and wallet reports with exportable data.</p></div>
+          <div><h1 className="text-[24px] font-bold tracking-[-.025em] sm:text-[27px]">Reports &amp; analytics</h1>
+            <p className="mt-1 text-[13px] text-app-text-secondary sm:text-[14px]">Operational, financial and wallet reports with exportable data.</p>
+            </div>
           <div className="flex items-center gap-2 print:hidden">
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-[#d3dcec] bg-white px-3 py-2.5 text-[13px] font-semibold shadow-sm hover:bg-slate-50 sm:px-4"><Printer size={17} />Print</button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-app-border bg-app-surface px-3 py-2.5 text-[13px] font-semibold shadow-sm hover:bg-app-surface-muted sm:px-4"><Printer size={17} />Print</button>
             <button onClick={exportReport} disabled={!data.length} className="inline-flex items-center gap-2 rounded-lg bg-[#2d50e7] px-3 py-2.5 text-[13px] font-semibold text-white shadow-sm hover:bg-[#2043d1] disabled:opacity-50 sm:px-4"><Download size={17} />Export CSV</button>
           </div>
         </div>
 
         <div className={`${card} overflow-hidden print:hidden`}>
-          <div className="flex gap-1 overflow-x-auto border-b border-[#e2e8f2] px-3 pt-1 sm:px-4">
-            {TABS.map(({ id, name, icon: Icon }) => <button key={id} onClick={() => changeTab(id)} className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-4 text-[13px] font-semibold transition-colors sm:px-4 ${tab === id ? "border-[#2d50e7] text-[#2d50e7]" : "border-transparent text-[#536383] hover:text-[#2d50e7]"}`}><Icon size={17} />{name}</button>)}
+          <div className="flex gap-1 overflow-x-auto border-b border-app-border px-3 pt-1 sm:px-4">
+            {TABS.map(({ id, name, icon: Icon }) => <button key={id} onClick={() => changeTab(id)} className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-4 text-[13px] font-semibold transition-colors sm:px-4 ${tab === id ? "border-primary text-primary" : "border-transparent text-app-text-secondary hover:text-primary"}`}><Icon size={17} />{name}</button>)}
           </div>
           <div className="flex flex-wrap items-center gap-2 px-4 py-4 sm:px-5">
-            <span className="mr-1 text-[13px] font-semibold text-[#536383]">Date range</span>
-            <input aria-label="Start date" type="date" value={start} max={end || undefined} onChange={(e) => changeDate("start", e.target.value)} className="min-w-0 rounded-lg border border-[#d1daeb] bg-white px-2 py-2.5 text-[13px] outline-none focus:border-[#2d50e7] sm:px-3" />
-            <span className="text-[#9aa6bc]">–</span>
-            <input aria-label="End date" type="date" value={end} min={start || undefined} onChange={(e) => changeDate("end", e.target.value)} className="min-w-0 rounded-lg border border-[#d1daeb] bg-white px-2 py-2.5 text-[13px] outline-none focus:border-[#2d50e7] sm:px-3" />
-            <div className="flex flex-wrap gap-1.5 sm:ml-1">{["7D", "30D", "90D", "6M", "1Y"].map((p) => <button key={p} onClick={() => selectPreset(p)} className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold ${preset === p ? "border-[#2d50e7] bg-[#eef2ff] text-[#2d50e7]" : "border-[#d1daeb] bg-white text-[#536383] hover:bg-slate-50"}`}>{p}</button>)}</div>
-            <span className="w-full text-[12px] text-[#8b98b2] xl:ml-auto xl:w-auto">Generated {generated}</span>
+            <span className="mr-1 text-[13px] font-semibold text-app-text-secondary">Date range</span>
+            <input aria-label="Start date" type="date" value={start} max={end || undefined} onChange={(e) => changeDate("start", e.target.value)} className="min-w-0 rounded-lg border border-app-border bg-app-surface px-2 py-2.5 text-[13px] outline-none focus:border-primary sm:px-3" />
+            <span className="text-app-text-muted">–</span>
+            <input aria-label="End date" type="date" value={end} min={start || undefined} onChange={(e) => changeDate("end", e.target.value)} className="min-w-0 rounded-lg border border-app-border bg-app-surface px-2 py-2.5 text-[13px] outline-none focus:border-primary sm:px-3" />
+            <div className="flex flex-wrap gap-1.5 sm:ml-1">{["7D", "30D", "90D", "6M", "1Y"].map((p) => <button key={p} onClick={() => selectPreset(p)} className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold ${preset === p ? "border-primary bg-brand-primary-light text-primary" : "border-app-border bg-app-surface text-app-text-secondary hover:bg-app-surface-muted"}`}>{p}</button>)}</div>
+            <span className="w-full text-[12px] text-app-text-muted xl:ml-auto xl:w-auto">Generated {generated}</span>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-          {summary.map(([label, value]) => <div key={label} className="rounded-xl border border-[#e0e6f0] bg-white p-4 sm:p-5"><p className={small}>{label}</p><p className="mt-1 text-[21px] font-bold tracking-tight sm:text-[23px]">{value}</p></div>)}
+          {summary.map(([label, value]) => <div key={label} className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
+            <p className={small}>{label}</p>
+            <p className="mt-1 text-[21px] font-bold tracking-tight sm:text-[23px]">{value}</p>
+            </div>)}
         </div>
 
         <section className={`${card} min-w-0 p-4 sm:p-6`}>
-          <div className="flex items-start gap-2.5"><BarChart3 size={20} className="mt-0.5 shrink-0 text-[#2d50e7]" /><div><h2 className="text-[16px] font-bold sm:text-[17px]">{title} report</h2><p className="mt-1 text-[12px] text-[#8b98b2] sm:text-[13px]">{displayRange}</p></div></div>
+          <div className="flex items-start gap-2.5"><BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
+            <div><h2 className="text-[16px] font-bold sm:text-[17px]">{title} report</h2>
+            <p className="mt-1 text-[12px] text-app-text-muted sm:text-[13px]">{displayRange}</p>
+            </div></div>
           {data.length ? <div className="mt-8 h-[310px] w-full sm:mt-10 sm:h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               {tab === "revenue" || tab === "wallet" ? <LineChart data={data} margin={{ top: 10, right: 15, left: -10, bottom: 20 }}>
-                <CartesianGrid stroke="#e2e8f2" vertical={false} /><XAxis dataKey="name" tick={{ fill: "#536383", fontSize: 11 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={60} /><YAxis tick={{ fill: "#536383", fontSize: 11 }} /><Tooltip formatter={(v) => money(v)} /><Legend verticalAlign="top" align="right" height={35} />
+                <CartesianGrid stroke="var(--app-border)" vertical={false} />
+            <XAxis dataKey="name" tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={60} />
+            <YAxis tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} />
+            <Tooltip formatter={(v) => money(v)} contentStyle={{ backgroundColor: "var(--app-surface)", color: "var(--app-text)", borderColor: "var(--app-border)", borderRadius: 12 }} labelStyle={{ color: "var(--app-text)" }} />
+            <Legend verticalAlign="top" align="right" height={35} wrapperStyle={{ color: "var(--app-text-secondary)" }} />
                 {tab === "revenue" ? <><Line name="Revenue" dataKey="billed" stroke={BLUE} strokeWidth={2.5} dot={false} /><Line name="Provider cost" dataKey="cost" stroke={RED} strokeWidth={2} dot={false} /><Line name="Gross margin" dataKey="margin" stroke={GREEN} strokeWidth={2} dot={false} /></> : <><Line name="Credit" dataKey="credits" stroke={GREEN} strokeWidth={2.5} dot={false} /><Line name="Debit" dataKey="debits" stroke={RED} strokeWidth={2.5} dot={false} /></>}
               </LineChart> : <BarChart data={data} margin={{ top: 10, right: 8, left: -15, bottom: 25 }} barCategoryGap="20%">
-                <CartesianGrid stroke="#e2e8f2" vertical={false} /><XAxis dataKey="name" tick={{ fill: "#536383", fontSize: 11 }} interval={tab === "retailer" ? 0 : "preserveStartEnd"} angle={-35} textAnchor="end" height={75} /><YAxis allowDecimals={false} tick={{ fill: "#536383", fontSize: 11 }} /><Tooltip /><Legend verticalAlign="top" align="right" height={35} /><Bar dataKey="verified" name="Verified" stackId="checks" fill={BLUE} maxBarSize={34} radius={[2, 2, 0, 0]} /><Bar dataKey="failed" name="Failed" stackId="checks" fill={RED} maxBarSize={34} /><Bar dataKey="pending" name="Pending" stackId="checks" fill={AMBER} maxBarSize={34} />
+                <CartesianGrid stroke="var(--app-border)" vertical={false} />
+            <XAxis dataKey="name" tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} interval={tab === "retailer" ? 0 : "preserveStartEnd"} angle={-35} textAnchor="end" height={75} />
+            <YAxis allowDecimals={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} />
+            <Tooltip contentStyle={{ backgroundColor: "var(--app-surface)", color: "var(--app-text)", borderColor: "var(--app-border)", borderRadius: 12 }} labelStyle={{ color: "var(--app-text)" }} />
+            <Legend verticalAlign="top" align="right" height={35} wrapperStyle={{ color: "var(--app-text-secondary)" }} /><Bar dataKey="verified" name="Verified" stackId="checks" fill={BLUE} maxBarSize={34} radius={[2, 2, 0, 0]} /><Bar dataKey="failed" name="Failed" stackId="checks" fill={RED} maxBarSize={34} /><Bar dataKey="pending" name="Pending" stackId="checks" fill={AMBER} maxBarSize={34} />
               </BarChart>}
             </ResponsiveContainer>
-          </div> : <p className="py-16 text-center text-[#8b98b2]">No demo records for this date range.</p>}
+          </div> : <p className="py-16 text-center text-app-text-muted">No demo records for this date range.</p>}
         </section>
 
         <section className={`${card} min-w-0 overflow-hidden`}>
-          <div className="flex items-center gap-2.5 px-5 py-5"><Table2 size={19} className="text-[#2d50e7]" /><h2 className="text-[16px] font-bold">Report data</h2></div>
-          <div className="w-full overflow-x-auto"><table className="w-full min-w-[740px] border-collapse"><thead className="bg-[#f7f9fc]"><tr>{cols.map((c) => <th key={c} className={th}>{c}</th>)}</tr></thead><tbody>
-            {visible.length ? visible.map((r, i) => <tr key={`${r.date || r.key || r.name}-${i}`} className="hover:bg-[#f8faff]">
+          <div className="flex items-center gap-2.5 px-5 py-5"><Table2 size={19} className="text-primary" /><h2 className="text-[16px] font-bold">Report data</h2>
+            </div>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[740px] border-collapse">
+            <thead className="bg-app-surface-muted">
+            <tr>{cols.map((c) => <th key={c} className={th}>{c}</th>)}</tr></thead>
+            <tbody>
+            {visible.length ? visible.map((r, i) => <tr key={`${r.date || r.key || r.name}-${i}`} className="hover:bg-app-surface-muted">
               <td className={`${td} font-semibold`}>{r.label || r.name}</td>
-              {tab === "revenue" ? <><td className={td}>{r.total}</td><td className={td}>{money(r.billed)}</td><td className={td}>{money(r.cost)}</td><td className={`${td} text-[#07965a]`}>{money(r.margin)}</td><td className={td}>{r.billed ? (r.margin / r.billed * 100).toFixed(1) : "0.0"}%</td></> : tab === "wallet" ? <><td className={td}>{r.total}</td><td className={`${td} text-[#07965a]`}>{money(r.credits)}</td><td className={`${td} text-[#e23d45]`}>{money(r.debits)}</td><td className={td}>{money(r.credits - r.debits)}</td></> : <><td className={`${td} text-center`}>{r.total}</td><td className={`${td} text-center text-[#07965a]`}>{r.verified}</td><td className={`${td} text-center text-[#e23d45]`}>{r.failed}</td><td className={`${td} text-center`}>{r.pending}</td><td className={`${td} text-center`}>{r.success.toFixed(1)}%</td><td className={`${td} text-right font-semibold`}>{money(r.billed)}</td></>}
-            </tr>) : <tr><td colSpan={cols.length} className="px-4 py-12 text-center text-[#8b98b2]">No data found for the selected period.</td></tr>}
-          </tbody></table></div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e4eaf4] px-4 py-4 sm:px-5"><span className="text-[12px] text-[#536383]">Showing <strong>{data.length ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, data.length)}</strong> of <strong>{data.length}</strong></span><div className="flex items-center gap-1"><button disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-lg border border-[#dce4f0] p-2 disabled:opacity-35" aria-label="Previous page"><ChevronLeft size={16} /></button>{Array.from({ length: totalPages }, (_, i) => i + 1).filter((p) => totalPages <= 6 || p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((p, i, arr) => <span key={p} className="flex items-center gap-1">{i > 0 && p - arr[i - 1] > 1 && <span className="px-1 text-[#8b98b2]">…</span>}<button onClick={() => setPage(p)} className={`min-w-9 rounded-lg border px-2 py-2 text-[12px] font-semibold ${page === p ? "border-[#2d50e7] bg-[#2d50e7] text-white" : "border-[#dce4f0] text-[#536383] hover:bg-[#f3f6fc]"}`}>{p}</button></span>)}<button disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded-lg border border-[#dce4f0] p-2 disabled:opacity-35" aria-label="Next page"><ChevronRight size={16} /></button></div></div>
+              {tab === "revenue" ? <>
+            <td className={td}>{r.total}</td>
+            <td className={td}>{money(r.billed)}</td>
+            <td className={td}>{money(r.cost)}</td>
+            <td className={`${td} text-[#07965a]`}>{money(r.margin)}</td>
+            <td className={td}>{r.billed ? (r.margin / r.billed * 100).toFixed(1) : "0.0"}%</td></> : tab === "wallet" ? <>
+            <td className={td}>{r.total}</td>
+            <td className={`${td} text-[#07965a]`}>{money(r.credits)}</td>
+            <td className={`${td} text-[#e23d45]`}>{money(r.debits)}</td>
+            <td className={td}>{money(r.credits - r.debits)}</td></> : <>
+            <td className={`${td} text-center`}>{r.total}</td>
+            <td className={`${td} text-center text-[#07965a]`}>{r.verified}</td>
+            <td className={`${td} text-center text-[#e23d45]`}>{r.failed}</td>
+            <td className={`${td} text-center`}>{r.pending}</td>
+            <td className={`${td} text-center`}>{r.success.toFixed(1)}%</td>
+            <td className={`${td} text-right font-semibold`}>{money(r.billed)}</td></>}
+            </tr>) : <tr>
+            <td colSpan={cols.length} className="px-4 py-12 text-center text-app-text-muted">No data found for the selected period.</td></tr>}
+          </tbody></table>
+            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-app-border px-4 py-4 sm:px-5">
+            <span className="text-[12px] text-app-text-secondary">Showing <strong>{data.length ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, data.length)}</strong> of <strong>{data.length}</strong></span>
+            <div className="flex items-center gap-1">
+            <button disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-lg border border-app-border p-2 disabled:opacity-35" aria-label="Previous page"><ChevronLeft size={16} />
+            </button>{Array.from({ length: totalPages }, (_, i) => i + 1).filter((p) => totalPages <= 6 || p === 1 || p === totalPages || Math.abs(p - page) <= 1).map((p, i, arr) => <span key={p} className="flex items-center gap-1">{i > 0 && p - arr[i - 1] > 1 && <span className="px-1 text-app-text-muted">…</span>}<button onClick={() => setPage(p)} className={`min-w-9 rounded-lg border px-2 py-2 text-[12px] font-semibold ${page === p ? "border-primary bg-[#2d50e7] text-white" : "border-app-border text-app-text-secondary hover:bg-app-surface-muted"}`}>{p}</button></span>)}<button disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded-lg border border-app-border p-2 disabled:opacity-35" aria-label="Next page"><ChevronRight size={16} />
+            </button>
+            </div></div>
         </section>
-        {toast && <div role="status" className="fixed bottom-5 right-5 z-[90] flex max-w-[calc(100vw-40px)] items-center gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-[13px] font-medium text-emerald-700 shadow-xl"><CheckCircle2 size={18} />{toast}<button aria-label="Dismiss message" onClick={() => setToast("")}><X size={16} /></button></div>}
+        {toast && <div role="status" className="fixed bottom-5 right-5 z-[90] flex max-w-[calc(100vw-40px)] items-center gap-3 rounded-xl border border-emerald-200 bg-app-surface px-4 py-3 text-[13px] font-medium text-emerald-700 shadow-xl"><CheckCircle2 size={18} />{toast}<button aria-label="Dismiss message" onClick={() => setToast("")}><X size={16} />
+            </button>
+            </div>}
       </div>
     </div>
   );
