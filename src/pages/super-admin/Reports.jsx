@@ -1,14 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Store, Layers, IndianRupee, ArrowLeftRight,
   Download, Printer, Table2, ChevronLeft, ChevronRight,
-  FlaskConical, X, CheckCircle2, BarChart3
+  X, CheckCircle2, BarChart3
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis,
   Tooltip, Legend, LineChart, Line
 } from "recharts";
+import api, { getErrorMessage } from "../../api";
 
+// Data: GET /admin/reports?start_date&end_date returns every tab's dataset in one response.
+// Note: the backend's monthly and revenue datasets are all-time (not limited to the date range),
+// and its wallet dataset lists at most the latest 100 transactions in the range.
 const TABS = [
   { id: "daily", name: "Daily verification", icon: CalendarDays },
   { id: "monthly", name: "Monthly verification", icon: CalendarDays },
@@ -18,38 +22,50 @@ const TABS = [
   { id: "wallet", name: "Wallet transactions", icon: ArrowLeftRight },
 ];
 const BLUE = "#5275ff", RED = "#e23d45", AMBER = "#e39810", GREEN = "#07965a";
-const DAY = 86400000;
-const formatDate = (date) => date.toISOString().slice(0, 10);
+const pad = (n) => String(n).padStart(2, "0");
+// Local calendar date (toISOString would shift the day for IST users near midnight).
+const formatDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const dateLabel = (value, short = false) => new Date(`${value}T12:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", ...(short ? {} : { year: "numeric" }) });
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const pad = (n) => String(n).padStart(2, "0");
-const rangeEnd = "2026-10-23";
-const initialStart = "2026-09-24";
-const retailers = ["Shree Ganesh Mobile Point", "Sai Digital Services", "Annapurna Finserv Kendra", "Krishna CSC Centre", "Royal Enterprises", "Metro Fintech Hub", "Om Sai Multiservices", "Laxmi Money Point", "Navkar Digital Point", "Bharat Seva Kendra", "Balaji Online Seva", "Green Valley Traders"];
-const services = ["Aadhaar", "PAN", "Bank", "e-Sign"];
-const prices = [20, 10, 15, 30];
-
-// Synthetic sample data for UI demonstration; replace with API responses later.
-const DEMO_RECORDS = Array.from({ length: 365 }, (_, index) => {
-  const date = new Date(Date.UTC(2026, 9, 21) - index * DAY);
-  const key = formatDate(date);
-  const verified = index === 0 || index === 1 ? 0 : (index * 7 + 3) % 6 + (index % 11 === 0 ? 2 : 0);
-  const failed = index === 0 || index === 1 ? 0 : index % 7 === 0 || index % 9 === 0 ? 1 : 0;
-  const pending = 0;
-  const count = verified + failed + pending;
-  const billed = count ? verified * (index % 3 === 0 ? 20 : 15) + failed * 10 : 0;
-  return { date: key, verified, failed, pending, total: count, billed };
-});
+const CHRONOLOGICAL_TABS = ["daily", "monthly", "revenue", "wallet"];
+const ALL_TIME_TABS = ["monthly", "revenue"];
 
 function getDateRange(preset) {
-  const end = new Date(`${rangeEnd}T00:00:00Z`);
+  const end = new Date();
   const start = new Date(end);
-  if (preset === "7D") start.setUTCDate(end.getUTCDate() - 6);
-  if (preset === "30D") start.setUTCDate(end.getUTCDate() - 29);
-  if (preset === "90D") start.setUTCDate(end.getUTCDate() - 89);
-  if (preset === "6M") start.setUTCMonth(end.getUTCMonth() - 6);
-  if (preset === "1Y") start.setUTCFullYear(end.getUTCFullYear() - 1);
+  if (preset === "7D") start.setDate(end.getDate() - 6);
+  if (preset === "30D") start.setDate(end.getDate() - 29);
+  if (preset === "90D") start.setDate(end.getDate() - 89);
+  if (preset === "6M") start.setMonth(end.getMonth() - 6);
+  if (preset === "1Y") start.setFullYear(end.getFullYear() - 1);
   return [formatDate(start), formatDate(end)];
+}
+const [initialStart, initialEnd] = getDateRange("30D");
+
+const verificationRow = (r, name, label = name) => ({ name, label, total: Number(r.total) || 0, verified: Number(r.verified) || 0, failed: Number(r.failed) || 0, pending: Number(r.pending) || 0, billed: Number(r.billed) || 0, success: Number(r.success_pct) || 0 });
+
+// Groups wallet transactions (newest first from the API) into daily credit/debit totals, oldest first.
+function walletByDay(transactions) {
+  const groups = new Map();
+  for (const tx of transactions) {
+    const day = String(tx.created_at || "").split(",")[0];
+    if (!groups.has(day)) groups.set(day, { name: day, label: day, total: 0, credits: 0, debits: 0, sort: new Date(day).getTime() || 0 });
+    const g = groups.get(day);
+    g.total += 1;
+    if (tx.type === "credit") g.credits += Number(tx.amount) || 0;
+    else g.debits += Number(tx.amount) || 0;
+  }
+  return [...groups.values()].sort((a, b) => a.sort - b.sort);
+}
+
+function toTabData(report, tab) {
+  if (!report) return [];
+  if (tab === "daily") return [...(report.daily?.table ?? [])].reverse().map((r) => verificationRow(r, dateLabel(r.raw_date, true), r.date));
+  if (tab === "monthly") return [...(report.monthly?.table ?? [])].reverse().map((r) => verificationRow(r, r.month));
+  if (tab === "retailer") return (report.retailer?.table ?? []).map((r) => verificationRow(r, r.shop));
+  if (tab === "service") return (report.service?.table ?? []).map((r) => ({ ...verificationRow(r, r.name), cost: Number(r.provider_cost) || 0, margin: Number(r.gross_margin) || 0 }));
+  if (tab === "revenue") return [...(report.revenue?.table ?? [])].reverse().map((r) => ({ name: r.month, label: r.month, total: Number(r.verifications) || 0, billed: Number(r.revenue) || 0, cost: Number(r.provider_cost) || 0, margin: Number(r.gross_margin) || 0 }));
+  return walletByDay(report.wallet?.table ?? []);
 }
 
 function csvDownload(filename, rows) {
@@ -57,7 +73,7 @@ function csvDownload(filename, rows) {
   const keys = Object.keys(rows[0]);
   const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const csv = [keys.map(escape).join(","), ...rows.map((r) => keys.map((k) => escape(r[k])).join(","))].join("\r\n");
-  const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -76,11 +92,31 @@ const td = "whitespace-nowrap border-t border-app-border px-4 py-4 text-[13px] t
 export default function Reports() {
   const [tab, setTab] = useState("daily");
   const [start, setStart] = useState(initialStart);
-  const [end, setEnd] = useState(rangeEnd);
+  const [end, setEnd] = useState(initialEnd);
   const [preset, setPreset] = useState("30D");
   const [page, setPage] = useState(1);
-    const [toast, setToast] = useState("");
-  const generated = "23 Oct 2026, 09:12 pm";
+  const [toast, setToast] = useState("");
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [generated, setGenerated] = useState("");
+  const [version, setVersion] = useState(0);
+
+  const validRange = Boolean(start && end && start <= end);
+  useEffect(() => {
+    if (!validRange) return;
+    let active = true;
+    api.get("/admin/reports", { params: { start_date: start, end_date: end } })
+      .then(({ data }) => {
+        if (!active) return;
+        setReport(data?.data ?? null);
+        setError("");
+        setGenerated(new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }));
+      })
+      .catch((err) => { if (active) setError(getErrorMessage(err, "Unable to load reports.")); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [start, end, validRange, version]);
 
   const changeTab = (value) => { setTab(value); setPage(1); };
   const selectPreset = (value) => {
@@ -92,70 +128,42 @@ export default function Reports() {
     else setEnd(value);
     setPreset(""); setPage(1);
   };
+  const retry = () => { setLoading(true); setError(""); setVersion((v) => v + 1); };
 
-  const data = useMemo(() => {
-    if (!start || !end || start > end) return [];
-    const filtered = DEMO_RECORDS.filter((r) => r.date >= start && r.date <= end).sort((a, b) => a.date.localeCompare(b.date));
-    if (tab === "daily") return filtered.map((r) => ({ ...r, name: dateLabel(r.date, true), label: dateLabel(r.date), success: r.total ? (r.verified / r.total) * 100 : 0 }));
-    if (tab === "monthly") {
-      const groups = new Map();
-      for (const r of filtered) {
-        const key = r.date.slice(0, 7);
-        if (!groups.has(key)) groups.set(key, { key, name: new Date(`${key}-01T12:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" }), verified: 0, failed: 0, pending: 0, total: 0, billed: 0 });
-        const g = groups.get(key);
-        for (const k of ["verified", "failed", "pending", "total", "billed"]) g[k] += r[k];
-      }
-      return [...groups.values()].map((r) => ({ ...r, success: r.total ? r.verified / r.total * 100 : 0 }));
-    }
-    const total = filtered.reduce((acc, r) => acc + r.total, 0);
-    const weights = tab === "retailer" ? [12, 10, 17, 11, 20, 17, 9, 13, 8, 6, 7, 12] : [31, 31, 25, 13];
-    const names = tab === "retailer" ? retailers : services;
-    if (tab === "retailer" || tab === "service") {
-      const sumWeights = weights.reduce((a, b) => a + b, 0);
-      return names.map((name, i) => {
-        const count = Math.round(total * weights[i] / sumWeights);
-        const failed = Math.round(count * (i % 4 === 0 ? .12 : .07));
-        const verified = count - failed;
-        const billed = tab === "service" ? count * prices[i] : Math.round(count * 17);
-        return { name, total: count, verified, failed, pending: 0, billed, success: count ? verified / count * 100 : 0 };
-      });
-    }
-    if (tab === "revenue") return filtered.map((r) => ({ ...r, name: dateLabel(r.date, true), label: dateLabel(r.date), cost: Math.round(r.billed * .42), margin: Math.round(r.billed * .58), success: r.total ? r.verified / r.total * 100 : 0 }));
-    return filtered.map((r) => ({ ...r, name: dateLabel(r.date, true), label: dateLabel(r.date), credits: r.total ? (Number(r.date.slice(-2)) % 6 === 0 ? 500 : 0) : 0, debits: r.billed, success: r.total ? r.verified / r.total * 100 : 0 }));
-  }, [start, end, tab]);
-
-  const stats = useMemo(() => data.reduce((acc, r) => {
-    acc.total += r.total || 0; acc.verified += r.verified || 0; acc.failed += r.failed || 0;
-    acc.billed += r.billed || 0; acc.credits += r.credits || 0; acc.debits += r.debits || 0;
-    acc.margin += r.margin || 0; return acc;
-  }, { total: 0, verified: 0, failed: 0, billed: 0, credits: 0, debits: 0, margin: 0 }), [data]);
-  const successRate = stats.total ? `${(stats.verified / stats.total * 100).toFixed(1)}%` : "0.0%";
+  const data = useMemo(() => (validRange ? toTabData(report, tab) : []), [report, tab, validRange]);
+  const kpis = report?.kpis;
   const pageSize = 12;
   const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
-  const visible = [...data].reverse().slice((page - 1) * pageSize, page * pageSize);
+  // Charts read oldest → newest; the table lists newest first.
+  const tableRows = CHRONOLOGICAL_TABS.includes(tab) ? [...data].reverse() : data;
+  const visible = tableRows.slice((page - 1) * pageSize, page * pageSize);
   const title = TABS.find((t) => t.id === tab)?.name || "Report";
+  const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
   const summary = tab === "revenue" ? [
-    ["GROSS REVENUE", money(stats.billed)], ["PROVIDER COST", money(stats.billed - stats.margin)], ["GROSS MARGIN", money(stats.margin)], ["MARGIN %", stats.billed ? `${(stats.margin / stats.billed * 100).toFixed(1)}%` : "0.0%"]
+    ["GROSS REVENUE", money(report?.revenue_kpis?.gross_revenue)], ["PROVIDER COST", money(report?.revenue_kpis?.provider_cost)], ["GROSS MARGIN", money(report?.revenue_kpis?.gross_margin)], ["MARGIN %", percent(report?.revenue_kpis?.margin_pct)]
   ] : tab === "wallet" ? [
-    ["WALLET TRANSACTIONS", stats.total], ["CREDITS", money(stats.credits)], ["DEBITS", money(stats.debits)], ["NET MOVEMENT", money(stats.credits - stats.debits)]
+    ["WALLET TRANSACTIONS", report?.wallet_kpis?.transaction_count ?? 0], ["CREDITS", money(report?.wallet_kpis?.credits)], ["DEBITS", money(report?.wallet_kpis?.debits)], ["NET MOVEMENT", money(report?.wallet_kpis?.net_flow)]
+  ] : tab === "monthly" ? [
+    ["VERIFICATIONS", report?.monthly_kpis?.verifications ?? 0], ["SUCCESS RATE", percent(report?.monthly_kpis?.success_rate)], ["FAILED", report?.monthly_kpis?.failed ?? 0], ["BILLED", money(report?.monthly_kpis?.billed)]
   ] : [
-    ["VERIFICATIONS", stats.total], ["SUCCESS RATE", successRate], ["FAILED", stats.failed], ["BILLED", money(stats.billed)]
+    ["VERIFICATIONS", kpis?.verifications ?? 0], ["SUCCESS RATE", percent(kpis?.success_rate)], ["FAILED", kpis?.failed ?? 0], ["BILLED", money(kpis?.billed)]
   ];
+  const walletTruncated = tab === "wallet" && (report?.wallet_kpis?.transaction_count ?? 0) > (report?.wallet?.table?.length ?? 0);
   const exportReport = () => {
-    csvDownload(`verifyhub-${tab}-${start}-to-${end}.csv`, [...data].reverse().map(({ name, label, key, date, total, verified, failed, pending, success, billed, cost, margin, credits, debits }) => ({
-      Period: label || name, Total: total, Verified: verified, Failed: failed, Pending: pending,
-      "Success %": Number(success || 0).toFixed(1), "Billed INR": billed,
-      ...(tab === "revenue" ? { "Provider Cost INR": cost, "Margin INR": margin } : {}),
-      ...(tab === "wallet" ? { "Credits INR": credits, "Debits INR": debits } : {})
-    })));
+    csvDownload(`verifyhub-${tab}-${ALL_TIME_TABS.includes(tab) ? "all-time" : `${start}-to-${end}`}.csv`, tableRows.map(({ name, label, total, verified, failed, pending, success, billed, cost, margin, credits, debits }) => (
+      tab === "revenue" ? { Month: label, Verifications: total, "Revenue INR": billed, "Provider Cost INR": cost, "Margin INR": margin }
+      : tab === "wallet" ? { Date: label, Transactions: total, "Credits INR": credits, "Debits INR": debits, "Net INR": credits - debits }
+      : { Period: label || name, Total: total, Verified: verified, Failed: failed, Pending: pending, "Success %": Number(success || 0).toFixed(1), "Billed INR": billed, ...(tab === "service" ? { "Provider Cost INR": cost, "Margin INR": margin } : {}) }
+    )));
     setToast("Report CSV exported successfully.");
   };
-  const displayRange = start && end ? `${dateLabel(start)} – ${dateLabel(end)}` : "Select date range";
-  const cols = tab === "revenue" ? ["DATE", "VERIFICATIONS", "GROSS REVENUE", "PROVIDER COST", "GROSS MARGIN", "MARGIN %"] : tab === "wallet" ? ["DATE", "TRANSACTIONS", "CREDITS", "DEBITS", "NET MOVEMENT"] : [tab === "daily" ? "DATE" : tab === "monthly" ? "MONTH" : tab === "retailer" ? "RETAILER" : "SERVICE", "TOTAL", "VERIFIED", "FAILED", "PENDING", "SUCCESS %", "BILLED"];
+  const displayRange = ALL_TIME_TABS.includes(tab) ? "All time · grouped by month" : validRange ? `${dateLabel(start)} – ${dateLabel(end)}` : "Select a valid date range";
+  const cols = tab === "revenue" ? ["MONTH", "VERIFICATIONS", "GROSS REVENUE", "PROVIDER COST", "GROSS MARGIN", "MARGIN %"] : tab === "wallet" ? ["DATE", "TRANSACTIONS", "CREDITS", "DEBITS", "NET MOVEMENT"] : [tab === "daily" ? "DATE" : tab === "monthly" ? "MONTH" : tab === "retailer" ? "RETAILER" : "SERVICE", "TOTAL", "VERIFIED", "FAILED", "PENDING", "SUCCESS %", "BILLED"];
+  const emptyMessage = !validRange ? "Start date must be on or before the end date." : loading ? "Loading report..." : error ? error : "No data found for the selected period.";
 
   return (
     <div className="min-w-0 bg-app-background text-app-text print:bg-white">
-     
+
       <div className="mx-auto max-w-[1700px] space-y-5 px-4 py-6 sm:px-6 lg:px-7 lg:py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div><h1 className="text-[24px] font-bold tracking-[-.025em] sm:text-[27px]">Reports &amp; analytics</h1>
@@ -167,6 +175,8 @@ export default function Reports() {
           </div>
         </div>
 
+        {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700 print:hidden"><span>{error}</span><button type="button" onClick={retry} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-[12px] font-semibold text-red-700 hover:bg-red-100">Retry</button></div>}
+
         <div className={`${card} overflow-hidden print:hidden`}>
           <div className="flex gap-1 overflow-x-auto border-b border-app-border px-3 pt-1 sm:px-4">
             {TABS.map(({ id, name, icon: Icon }) => <button key={id} onClick={() => changeTab(id)} className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-4 text-[13px] font-semibold transition-colors sm:px-4 ${tab === id ? "border-primary text-primary" : "border-transparent text-app-text-secondary hover:text-primary"}`}><Icon size={17} />{name}</button>)}
@@ -177,14 +187,14 @@ export default function Reports() {
             <span className="text-app-text-muted">–</span>
             <input aria-label="End date" type="date" value={end} min={start || undefined} onChange={(e) => changeDate("end", e.target.value)} className="min-w-0 rounded-lg border border-app-border bg-app-surface px-2 py-2.5 text-[13px] outline-none focus:border-primary sm:px-3" />
             <div className="flex flex-wrap gap-1.5 sm:ml-1">{["7D", "30D", "90D", "6M", "1Y"].map((p) => <button key={p} onClick={() => selectPreset(p)} className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold ${preset === p ? "border-primary bg-brand-primary-light text-primary" : "border-app-border bg-app-surface text-app-text-secondary hover:bg-app-surface-muted"}`}>{p}</button>)}</div>
-            <span className="w-full text-[12px] text-app-text-muted xl:ml-auto xl:w-auto">Generated {generated}</span>
+            <span className="w-full text-[12px] text-app-text-muted xl:ml-auto xl:w-auto">{generated ? `Generated ${generated}` : "Generating report..."}</span>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
           {summary.map(([label, value]) => <div key={label} className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
             <p className={small}>{label}</p>
-            <p className="mt-1 text-[21px] font-bold tracking-tight sm:text-[23px]">{value}</p>
+            <p className="mt-1 text-[21px] font-bold tracking-tight sm:text-[23px]">{report ? value : "—"}</p>
             </div>)}
         </div>
 
@@ -192,6 +202,7 @@ export default function Reports() {
           <div className="flex items-start gap-2.5"><BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
             <div><h2 className="text-[16px] font-bold sm:text-[17px]">{title} report</h2>
             <p className="mt-1 text-[12px] text-app-text-muted sm:text-[13px]">{displayRange}</p>
+            {walletTruncated && <p className="mt-1 text-[12px] text-app-text-muted">Chart and table show the latest {report.wallet.table.length} of {report.wallet_kpis.transaction_count} transactions; totals above include all of them.</p>}
             </div></div>
           {data.length ? <div className="mt-8 h-[310px] w-full sm:mt-10 sm:h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -201,7 +212,7 @@ export default function Reports() {
             <YAxis tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} />
             <Tooltip formatter={(v) => money(v)} contentStyle={{ backgroundColor: "var(--app-surface)", color: "var(--app-text)", borderColor: "var(--app-border)", borderRadius: 12 }} labelStyle={{ color: "var(--app-text)" }} />
             <Legend verticalAlign="top" align="right" height={35} wrapperStyle={{ color: "var(--app-text-secondary)" }} />
-                {tab === "revenue" ? <><Line name="Revenue" dataKey="billed" stroke={BLUE} strokeWidth={2.5} dot={false} /><Line name="Provider cost" dataKey="cost" stroke={RED} strokeWidth={2} dot={false} /><Line name="Gross margin" dataKey="margin" stroke={GREEN} strokeWidth={2} dot={false} /></> : <><Line name="Credit" dataKey="credits" stroke={GREEN} strokeWidth={2.5} dot={false} /><Line name="Debit" dataKey="debits" stroke={RED} strokeWidth={2.5} dot={false} /></>}
+                {tab === "revenue" ? <><Line name="Revenue" dataKey="billed" stroke={BLUE} strokeWidth={2.5} dot={data.length === 1} /><Line name="Provider cost" dataKey="cost" stroke={RED} strokeWidth={2} dot={data.length === 1} /><Line name="Gross margin" dataKey="margin" stroke={GREEN} strokeWidth={2} dot={data.length === 1} /></> : <><Line name="Credit" dataKey="credits" stroke={GREEN} strokeWidth={2.5} dot={data.length === 1} /><Line name="Debit" dataKey="debits" stroke={RED} strokeWidth={2.5} dot={data.length === 1} /></>}
               </LineChart> : <BarChart data={data} margin={{ top: 10, right: 8, left: -15, bottom: 25 }} barCategoryGap="20%">
                 <CartesianGrid stroke="var(--app-border)" vertical={false} />
             <XAxis dataKey="name" tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} interval={tab === "retailer" ? 0 : "preserveStartEnd"} angle={-35} textAnchor="end" height={75} />
@@ -210,7 +221,7 @@ export default function Reports() {
             <Legend verticalAlign="top" align="right" height={35} wrapperStyle={{ color: "var(--app-text-secondary)" }} /><Bar dataKey="verified" name="Verified" stackId="checks" fill={BLUE} maxBarSize={34} radius={[2, 2, 0, 0]} /><Bar dataKey="failed" name="Failed" stackId="checks" fill={RED} maxBarSize={34} /><Bar dataKey="pending" name="Pending" stackId="checks" fill={AMBER} maxBarSize={34} />
               </BarChart>}
             </ResponsiveContainer>
-          </div> : <p className="py-16 text-center text-app-text-muted">No demo records for this date range.</p>}
+          </div> : <p className="py-16 text-center text-app-text-muted">{emptyMessage === "No data found for the selected period." ? "No activity in this period." : emptyMessage}</p>}
         </section>
 
         <section className={`${card} min-w-0 overflow-hidden`}>
@@ -221,7 +232,7 @@ export default function Reports() {
             <thead className="bg-app-surface-muted">
             <tr>{cols.map((c) => <th key={c} className={th}>{c}</th>)}</tr></thead>
             <tbody>
-            {visible.length ? visible.map((r, i) => <tr key={`${r.date || r.key || r.name}-${i}`} className="hover:bg-app-surface-muted">
+            {visible.length ? visible.map((r, i) => <tr key={`${r.label || r.name}-${i}`} className="hover:bg-app-surface-muted">
               <td className={`${td} font-semibold`}>{r.label || r.name}</td>
               {tab === "revenue" ? <>
             <td className={td}>{r.total}</td>
@@ -240,7 +251,7 @@ export default function Reports() {
             <td className={`${td} text-center`}>{r.success.toFixed(1)}%</td>
             <td className={`${td} text-right font-semibold`}>{money(r.billed)}</td></>}
             </tr>) : <tr>
-            <td colSpan={cols.length} className="px-4 py-12 text-center text-app-text-muted">No data found for the selected period.</td></tr>}
+            <td colSpan={cols.length} className="px-4 py-12 text-center text-app-text-muted">{emptyMessage}</td></tr>}
           </tbody></table>
             </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-app-border px-4 py-4 sm:px-5">

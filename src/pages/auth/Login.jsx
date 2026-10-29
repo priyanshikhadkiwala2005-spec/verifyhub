@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../api";
+import api, { getErrorMessage } from "../../api";
+import { ROLE_HOME, saveSession } from "../../auth";
 import {
   ShieldCheck,
   Shield,
@@ -46,14 +47,12 @@ const featureCards = [
 ];
 const demoAccounts = {
   admin: {
-    name: "Arvind Mehta",
     email: "admin@verifyhub.demo",
     password: "Admin@123",
   },
   retailer: {
-    name: "Shree Ganesh Mobile Point",
-    email: "retailer@verifyhub.demo",
-    password: "Demo@123",
+    email: "teamoppverse@gmail.com",
+    password: "12345678",
   },
 };
 export default function Login() {
@@ -114,6 +113,8 @@ export default function Login() {
       if (!validEmail && !validMobile) {
         newErrors.email =
           "Enter a valid email or 10-digit mobile number.";
+      } else if (role === "admin" && !validEmail) {
+        newErrors.email = "Super Admin sign-in requires an email address.";
       }
     }
     if (!form.password.trim()) {
@@ -124,51 +125,46 @@ export default function Login() {
   };
   const handleLogin = async (event) => {
     event.preventDefault();
+    if (loading) return;
     setMessage("");
     if (!validateForm()) return;
 
     setLoading(true);
 
     try {
+      const identifier = form.email.trim();
       const endpoint =
         role === "admin" ? "/auth/admin/login" : "/auth/retailer/login";
 
       const payload =
         role === "admin"
           ? {
-              email: form.email,
+              email: identifier,
               password: form.password,
             }
           : {
-              identifier: form.email,
+              identifier,
               password: form.password,
             };
 
       const response = await api.post(endpoint, payload);
-      const token = response?.data?.data?.access_token;
-      const user = response?.data?.data?.user;
+      const data = response?.data?.data;
+      const token = data?.access_token;
+      const userRole = data?.role || role;
 
-      if (!token) {
-        throw new Error("No access token received from server.");
+      if (!token || !ROLE_HOME[userRole]) {
+        throw new Error("Unexpected response from server. Please try again.");
       }
 
-      localStorage.setItem("verifyhub_token", token);
-      if (user) {
-        localStorage.setItem("verifyhub_user", JSON.stringify(user));
-      }
+      saveSession({ token, role: userRole, user: data.user }, rememberMe);
 
       setMessage("Login successful");
-
-      if (role === "admin") {
-        navigate("/super-admin/overview");
-      } else {
-        navigate("/retailer/overview", { replace: true });
-      }
+      navigate(ROLE_HOME[userRole], { replace: true });
     } catch (error) {
-      const serverMessage =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Login failed. Please try again.";
+      // Axios errors (HTTP / network) vs. the "unexpected response" thrown above.
+      const serverMessage = error?.isAxiosError
+        ? getErrorMessage(error, "Login failed. Please try again.")
+        : error?.message || "Login failed. Please try again.";
 
       setMessage(serverMessage);
       setErrors({
@@ -570,7 +566,7 @@ export default function Login() {
                 }`}
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-white">
-                  AM
+                  SA
                 </div>
                 <div>
                   <p className="text-[12px] font-semibold">Super Admin</p>
@@ -579,7 +575,7 @@ export default function Login() {
                       darkMode ? "text-[#b8c9ee]" : "text-app-text-secondary"
                     }`}
                   >
-                    Arvind Mehta
+                    {demoAccounts.admin.email}
                   </p>
                 </div>
               </button>
@@ -593,7 +589,7 @@ export default function Login() {
                 }`}
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-bold text-white">
-                  RP
+                  RT
                 </div>
                 <div>
                   <p className="text-[12px] font-semibold">Retailer</p>
@@ -602,7 +598,7 @@ export default function Login() {
                       darkMode ? "text-[#b8c9ee]" : "text-app-text-secondary"
                     }`}
                   >
-                    Shree Ganesh Mobile Point
+                    {demoAccounts.retailer.email}
                   </p>
                 </div>
               </button>
@@ -621,8 +617,8 @@ export default function Login() {
                   <code>Admin@123</code>
                 </p>
                 <p>
-                  Retailer: <code>retailer@verifyhub.demo</code> /{" "}
-                  <code>Demo@123</code>
+                  Retailer: <code>teamoppverse@gmail.com</code> /{" "}
+                  <code>12345678</code>
                 </p>
               </div>
             </div>

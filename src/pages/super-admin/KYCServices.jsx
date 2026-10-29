@@ -1,59 +1,44 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Fingerprint, CreditCard, Landmark, FilePenLine,
   Tags, PlugZap, ListChecks, ShieldAlert,
-  X, CheckCircle2, AlertTriangle,
+  X, CheckCircle2, AlertTriangle, RefreshCw,
 } from "lucide-react";
+import api, { getErrorMessage } from "../../api";
 
-// Frontend demo only. In production, read/update availability through an authenticated API.
-const STORAGE_KEY = "verifyhub_demo_kyc_service_availability_v1";
-const DEFAULT_SERVICES = [
-  {
-    id: "aadhaar", name: "Aadhaar Verification (OTP)",
-    description: "OTP-based Aadhaar authentication through a UIDAI-authorised partner. Returns name, gender, year of birth and state.",
-    icon: Fingerprint, iconBg: "#f0eaff", iconColor: "#7246f4",
-    price: 20, providerCost: 8, usage: 167, verified: 155, success: 92.8,
-    enabled: true,
-  },
-  {
-    id: "pan", name: "PAN Card Verification",
-    description: "Validate PAN, holder name, status and Aadhaar seeding against the income-tax source.",
-    icon: CreditCard, iconBg: "#edf1ff", iconColor: "#2854f4",
-    price: 10, providerCost: 3.5, usage: 171, verified: 152, success: 88.9,
-    enabled: true,
-  },
-  {
-    id: "bank", name: "Bank Account Verification (Penny Drop)",
-    description: "Credits ₹1 to the account via IMPS and returns the beneficiary name registered with the bank.",
-    icon: Landmark, iconBg: "#e6f5ff", iconColor: "#0285c5",
-    price: 15, providerCost: 6, usage: 136, verified: 121, success: 89.0,
-    enabled: true,
-  },
-  {
-    id: "esign", name: "Consent Letter with e-Sign",
-    description: "Generates the customer consent letter and collects a legally valid Aadhaar OTP e-Signature.",
-    icon: FilePenLine, iconBg: "#e0f7f3", iconColor: "#079589",
-    price: 30, providerCost: 15, usage: 73, verified: 69, success: 94.5,
-    enabled: true,
-  },
-];
+// Data: GET /admin/services · toggle: PUT /admin/services/{id} { status: active|paused }.
+// Icons/colours stay in the frontend; the order matches the Complete KYC flow.
+const SERVICE_META = {
+  aadhaar: { order: 1, step: "1. Aadhaar", icon: Fingerprint, iconBg: "#f0eaff", iconColor: "#7246f4" },
+  pan: { order: 2, step: "2. PAN", icon: CreditCard, iconBg: "#edf1ff", iconColor: "#2854f4" },
+  bank: { order: 3, step: "3. Bank", icon: Landmark, iconBg: "#e6f5ff", iconColor: "#0285c5" },
+  esign: { order: 4, step: "4. e-Sign", icon: FilePenLine, iconBg: "#e0f7f3", iconColor: "#079589" },
+};
 
-function loadAvailability() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
-    return saved;
-  } catch {
-    return {};
-  }
-}
+const FALLBACK_META = { order: 99, icon: ListChecks, iconBg: "#edf1ff", iconColor: "#2854f4" };
+
+const toService = (svc) => ({
+  ...FALLBACK_META,
+  step: svc.short || svc.name,
+  ...SERVICE_META[svc.id],
+  id: svc.id,
+  name: svc.name,
+  description: svc.desc,
+  price: Number(svc.price) || 0,
+  providerCost: Number(svc.provider_cost) || 0,
+  usage: Number(svc.total_usage) || 0,
+  verified: Number(svc.successful_usage) || 0,
+  // The backend reports 100% for a service with no usage, so only show a rate once it has been used.
+  success: Number(svc.total_usage) > 0 ? Number(svc.success_rate) || 0 : null,
+  enabled: svc.status === "active",
+});
 
 function currency(value) {
   return `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
-function ServiceCard({ service, onToggle }) {
+function ServiceCard({ service, onToggle, busy }) {
   const Icon = service.icon;
   const margin = service.price - service.providerCost;
   return (
@@ -85,7 +70,7 @@ function ServiceCard({ service, onToggle }) {
         {[
           ["COST / CHECK", currency(service.price)],
           ["TOTAL USAGE", service.usage.toLocaleString("en-IN")],
-          ["SUCCESS RATE", `${service.success.toFixed(1)}%`],
+          ["SUCCESS RATE", service.success === null ? "—" : `${service.success.toFixed(1)}%`],
         ].map(([label, value]) => (
           <div key={label} className="min-w-0 rounded-xl border border-app-border bg-app-surface-muted px-2.5 py-3 sm:px-3">
             <p className="text-[10px] font-bold tracking-[0.02em] text-app-text-muted sm:text-[11px]">{label}</p>
@@ -99,7 +84,7 @@ function ServiceCard({ service, onToggle }) {
         <span>{service.verified} verified</span>
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-app-border">
-        <div className="h-full rounded-full bg-[#11965b] transition-[width] duration-300" style={{ width: `${service.success}%` }} />
+        <div className="h-full rounded-full bg-[#11965b] transition-[width] duration-300" style={{ width: `${service.success ?? 0}%` }} />
       </div>
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-app-border pt-4">
         <p className="text-[12px] leading-5 text-app-text-secondary sm:text-[13px]">
@@ -111,7 +96,8 @@ function ServiceCard({ service, onToggle }) {
           aria-checked={service.enabled}
           aria-label={`${service.enabled ? "Disable" : "Enable"} ${service.name}`}
           onClick={() => onToggle(service)}
-          className={`relative h-[28px] w-[47px] shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2854e8] ${service.enabled ? "bg-[#0f985b]" : "bg-[#65738a]"}`}
+          disabled={busy}
+          className={`relative h-[28px] w-[47px] shrink-0 rounded-full transition-colors disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2854e8] ${service.enabled ? "bg-[#0f985b]" : "bg-[#65738a]"}`}
         >
           <span className={`absolute left-[3px] top-[3px] h-[22px] w-[22px] rounded-full bg-app-surface shadow-sm transition-transform ${service.enabled ? "translate-x-[19px]" : "translate-x-0"}`} />
         </button>
@@ -122,18 +108,28 @@ function ServiceCard({ service, onToggle }) {
 
 export default function KYCServices() {
   const navigate = useNavigate();
-  const [availability, setAvailability] = useState(loadAvailability);
+  const [services, setServices] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [confirmService, setConfirmService] = useState(null);
   const [toast, setToast] = useState("");
-  const services = useMemo(
-    () => DEFAULT_SERVICES.map((service) => ({
-      ...service,
-      enabled: typeof availability[service.id] === "boolean" ? availability[service.id] : service.enabled,
-    })),
-    [availability]
-  );
+  const [toastError, setToastError] = useState(false);
   const enabledCount = services.filter((service) => service.enabled).length;
-  const totalPrice = services.reduce((sum, service) => sum + service.price, 0);
+
+  const loadServices = useCallback(() => api.get("/admin/services")
+    .then(({ data }) => {
+      setServices((data?.data?.services ?? []).map(toService).sort((a, b) => a.order - b.order));
+      setSummary(data?.data?.summary ?? null);
+      setLoadError("");
+    })
+    .catch((err) => setLoadError(getErrorMessage(err, "Unable to load KYC services.")))
+    .finally(() => setLoading(false)), []);
+
+  useEffect(() => { loadServices(); }, [loadServices]);
+
+  const retry = () => { setLoading(true); setLoadError(""); loadServices(); };
 
   useEffect(() => {
     if (!confirmService) return;
@@ -142,17 +138,23 @@ export default function KYCServices() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [confirmService]);
 
-  const saveToggle = (service) => {
+  const saveToggle = async (service) => {
+    if (saving) return;
     const nextEnabled = !service.enabled;
-    const next = { ...availability, [service.id]: nextEnabled };
-    setAvailability(next);
+    setSaving(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      setToast(`${service.name} ${nextEnabled ? "enabled" : "disabled"} in this browser's demo.`);
-    } catch {
-      setToast(`${service.name} updated for this session (browser storage unavailable).`);
+      await api.put(`/admin/services/${service.id}`, { status: nextEnabled ? "active" : "paused" });
+      setToastError(false);
+      setToast(`${service.name} ${nextEnabled ? "enabled" : "disabled"}.`);
+      setConfirmService(null);
+      loadServices();
+    } catch (err) {
+      setToastError(true);
+      setToast(getErrorMessage(err, `Unable to update ${service.name}.`));
+      setConfirmService(null);
+    } finally {
+      setSaving(false);
     }
-    setConfirmService(null);
   };
 
   return (
@@ -170,9 +172,16 @@ export default function KYCServices() {
           </button>
         </div>
 
+        {loadError && (
+          <div role="alert" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700">
+            <span>{loadError}</span>
+            <button type="button" onClick={retry} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-[12px] font-semibold text-red-700 hover:bg-red-100"><RefreshCw size={15} />Retry</button>
+          </div>
+        )}
+
         <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#a7d8ff] bg-[#e6f5ff] dark:border-[#315c85] dark:bg-[#17304a] px-4 py-4 text-[12px] leading-6 text-[#172744] dark:text-[#dceaff] sm:px-5 sm:text-[13px]">
           <PlugZap size={20} className="mt-0.5 shrink-0 text-[#008ed3] dark:text-[#66c9ff]" />
-          <p><strong>{enabledCount} of {services.length} live services enabled.</strong> Disabling a service hides it from retailer dashboards and blocks new requests in the planned production integration. In-flight requests would complete normally. <span className="text-[#516d91] dark:text-[#a6bdd8]">(This demo only updates the UI.)</span></p>
+          <p><strong>{loading ? "Loading services..." : `${enabledCount} of ${services.length} live services enabled.`}</strong> Disabling a service blocks new verification requests for it across all retailers. In-flight requests complete normally.</p>
         </div>
 
         <section className="mt-5 flex flex-col gap-4 rounded-2xl border border-app-border bg-app-surface p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -182,23 +191,29 @@ export default function KYCServices() {
               <h2 className="text-[16px] font-bold">Complete KYC flow</h2>
               <p className="mt-1 text-[12px] leading-5 text-app-text-secondary sm:text-[13px]">Retailers can run all four checks for one customer as a single guided journey.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {["1. Aadhaar", "2. PAN", "3. Bank", "4. e-Sign"].map((step, index) => (
-                  <span key={step} className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${services[index].enabled ? "border-app-border bg-app-surface-muted text-app-text-secondary" : "border-[#f1c8c8] bg-[#fff2f2] text-[#b45353] dark:border-[#75414a] dark:bg-[#3b2631] dark:text-[#ff9fa8] line-through"}`}>{step}</span>
+                {services.map(({ id, step, enabled }) => (
+                  <span key={id} className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${enabled ? "border-app-border bg-app-surface-muted text-app-text-secondary" : "border-[#f1c8c8] bg-[#fff2f2] text-[#b45353] dark:border-[#75414a] dark:bg-[#3b2631] dark:text-[#ff9fa8] line-through"}`}>{step}</span>
                 ))}
               </div>
             </div>
           </div>
           <div className="shrink-0 sm:text-right">
             <p className="text-[12px] text-app-text-muted">Default price per full KYC</p>
-            <p className="mt-1 text-[21px] font-bold">{currency(totalPrice)}</p>
+            <p className="mt-1 text-[21px] font-bold">{summary ? currency(summary.full_kyc_price) : "—"}</p>
           </div>
         </section>
 
         <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2 lg:gap-5">
           {services.map((service) => (
-            <ServiceCard key={service.id} service={service} onToggle={setConfirmService} />
+            <ServiceCard key={service.id} service={service} onToggle={setConfirmService} busy={saving} />
           ))}
         </div>
+
+        {!services.length && (
+          <p className="mt-4 rounded-2xl border border-app-border bg-app-surface px-4 py-12 text-center text-[13px] text-app-text-secondary">
+            {loading ? "Loading KYC services..." : "No KYC services found."}
+          </p>
+        )}
 
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-[#f1cc85] bg-[#fff3df] dark:border-[#70552d] dark:bg-[#3a3021] px-4 py-4 text-[12px] leading-5 text-[#1e2b44] dark:text-[#f2dfbd] sm:px-5 sm:text-[13px]">
           <ShieldAlert size={20} className="mt-0.5 shrink-0 text-[#df8b00] dark:text-[#ffc86d]" />
@@ -219,12 +234,12 @@ export default function KYCServices() {
             </div>
             <h2 id="kyc-toggle-title" className="mt-4 text-[20px] font-bold">{confirmService.enabled ? "Disable" : "Enable"} KYC service?</h2>
             <p className="mt-2 text-[13px] leading-6 text-app-text-secondary">
-              {confirmService.name} will be marked <strong>{confirmService.enabled ? "Inactive" : "Active"}</strong> in this demo. No live KYC APIs are affected.
+              {confirmService.name} will be marked <strong>{confirmService.enabled ? "Inactive" : "Active"}</strong>. {confirmService.enabled ? "Retailers will not be able to run new checks for this service until it is enabled again." : "Retailers will be able to run this check again."}
             </p>
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => setConfirmService(null)} className="rounded-xl border border-app-border bg-app-surface px-5 py-2.5 text-[13px] font-semibold text-app-text hover:bg-app-surface-muted">Cancel</button>
-              <button type="button" onClick={() => saveToggle(confirmService)} className={`rounded-xl px-5 py-2.5 text-[13px] font-semibold text-white ${confirmService.enabled ? "bg-[#d66b20] hover:bg-[#b95512]" : "bg-[#2652e8] hover:bg-[#1e40bd]"}`}>
-                {confirmService.enabled ? "Yes, disable" : "Yes, enable"}
+              <button type="button" disabled={saving} onClick={() => setConfirmService(null)} className="rounded-xl border border-app-border bg-app-surface px-5 py-2.5 text-[13px] font-semibold text-app-text hover:bg-app-surface-muted">Cancel</button>
+              <button type="button" disabled={saving} onClick={() => saveToggle(confirmService)} className={`rounded-xl px-5 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60 ${confirmService.enabled ? "bg-[#d66b20] hover:bg-[#b95512]" : "bg-[#2652e8] hover:bg-[#1e40bd]"}`}>
+                {saving ? "Saving..." : confirmService.enabled ? "Yes, disable" : "Yes, enable"}
               </button>
             </div>
           </div>
@@ -232,7 +247,7 @@ export default function KYCServices() {
       )}
 
       {toast && (
-        <div role="status" className="fixed bottom-5 right-4 z-[110] flex max-w-[min(430px,calc(100vw-32px))] items-start gap-3 rounded-xl border border-[#cce6d8] bg-app-surface p-4 text-[12px] text-[#145d3c] dark:text-[#77e4b0] dark:border-[#275e4d] shadow-xl sm:right-6">
+        <div role="status" className={`fixed bottom-5 right-4 z-[110] flex max-w-[min(430px,calc(100vw-32px))] items-start gap-3 rounded-xl border bg-app-surface p-4 text-[12px] shadow-xl sm:right-6 ${toastError ? "border-red-200 text-red-600 dark:text-red-300" : "border-[#cce6d8] text-[#145d3c] dark:text-[#77e4b0] dark:border-[#275e4d]"}`}>
           <CheckCircle2 size={19} className="shrink-0" />
           <span>{toast}</span>
           <button type="button" aria-label="Dismiss notification" onClick={() => setToast("")}><X size={16} /></button>

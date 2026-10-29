@@ -1,35 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, Save, Tags, UserRoundCog, RotateCcw, CheckCircle2, AlertCircle, Fingerprint, CreditCard, Landmark, FileSignature, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, Save, Tags, UserRoundCog, RotateCcw, CheckCircle2, AlertCircle, Fingerprint, CreditCard, Landmark, FileSignature, X, RefreshCw } from "lucide-react";
+import api, { getErrorMessage } from "../../api";
 
-// Demo-only frontend state. Replace these localStorage reads/writes with API calls later.
-const DEFAULT_SERVICES = [
-  { id: "aadhaar", name: "Aadhaar", provider: 8, selling: 20, usage: 41, icon: Fingerprint, color: "text-violet-600 dark:text-violet-300", bg: "bg-violet-100 dark:bg-violet-950/50" },
-  { id: "pan", name: "PAN", provider: 3.5, selling: 10, usage: 31, icon: CreditCard, color: "text-blue-600 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-950/50" },
-  { id: "bank", name: "Bank", provider: 6, selling: 15, usage: 39, icon: Landmark, color: "text-sky-600 dark:text-sky-300", bg: "bg-sky-100 dark:bg-sky-950/50" },
-  { id: "esign", name: "e-Sign", provider: 15, selling: 30, usage: 16, icon: FileSignature, color: "text-teal-600 dark:text-teal-300", bg: "bg-teal-100 dark:bg-teal-950/50" },
-];
-const RETAILERS = [
-  { id: "RT1001", name: "Shree Ganesh Mobile Point", initials: "SG", color: "bg-blue-600", status: "Active" },
-  { id: "RT1002", name: "Balaji Online Seva", initials: "BO", color: "bg-orange-600", status: "Active" },
-  { id: "RT1003", name: "Annapurna Finserv Kendra", initials: "AF", color: "bg-pink-700", status: "Active" },
-  { id: "RT1004", name: "Krishna CSC Centre", initials: "KC", color: "bg-violet-600", status: "Active" },
-  { id: "RT1005", name: "Royal Enterprises", initials: "RE", color: "bg-teal-700", status: "Active" },
-  { id: "RT1006", name: "Sai Digital Services", initials: "SD", color: "bg-indigo-600", status: "Active" },
-  { id: "RT1007", name: "Metro Fintech Hub", initials: "MF", color: "bg-sky-600", status: "Active" },
-  { id: "RT1008", name: "Om Sai Multiservices", initials: "OS", color: "bg-emerald-600", status: "Inactive" },
-  { id: "RT1009", name: "Laxmi Money Point", initials: "LM", color: "bg-blue-700", status: "Active" },
-  { id: "RT1010", name: "Vishal Digital Centre", initials: "VD", color: "bg-purple-700", status: "Active" },
-  { id: "RT1011", name: "Bharat Seva Kendra", initials: "BS", color: "bg-indigo-700", status: "Inactive" },
-  { id: "RT1012", name: "Green Valley Traders", initials: "GV", color: "bg-orange-700", status: "Active" },
-];
-const KEY_DEFAULTS = "verifyhub-pricing-defaults-v1";
-const KEY_CUSTOM = "verifyhub-pricing-custom-v1";
-const SEED_CUSTOM = { RT1003: { aadhaar: 18, pan: 9, bank: 14 }, RT1007: { pan: 9.5 } };
+// Data: GET /admin/pricing · defaults: POST /admin/pricing/defaults
+// retailer override: POST /admin/pricing/override · reset: DELETE /admin/pricing/override/{retailerId}
+const SERVICE_META = {
+  aadhaar: { order: 1, name: "Aadhaar", icon: Fingerprint, color: "text-violet-600 dark:text-violet-300", bg: "bg-violet-100 dark:bg-violet-950/50" },
+  pan: { order: 2, name: "PAN", icon: CreditCard, color: "text-blue-600 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-950/50" },
+  bank: { order: 3, name: "Bank", icon: Landmark, color: "text-sky-600 dark:text-sky-300", bg: "bg-sky-100 dark:bg-sky-950/50" },
+  esign: { order: 4, name: "e-Sign", icon: FileSignature, color: "text-teal-600 dark:text-teal-300", bg: "bg-teal-100 dark:bg-teal-950/50" },
+};
+const AVATAR_COLORS = ["bg-blue-600", "bg-orange-600", "bg-pink-700", "bg-violet-600", "bg-teal-700", "bg-indigo-600", "bg-sky-600", "bg-emerald-600"];
+const toService = (svc) => ({
+  order: 99, icon: Tags, color: "text-blue-600 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-950/50",
+  ...SERVICE_META[svc.id],
+  id: svc.id,
+  name: SERVICE_META[svc.id]?.name ?? svc.short ?? svc.name,
+  provider: Number(svc.provider_cost) || 0,
+  selling: Number(svc.price) || 0,
+  usage: Number(svc.usage_30d) || 0,
+});
+const toRetailer = (r, index) => ({
+  id: r.id,
+  name: r.shop,
+  initials: String(r.shop || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(),
+  color: AVATAR_COLORS[index % AVATAR_COLORS.length],
+  status: r.status === "active" ? "Active" : "Inactive",
+});
 const rupees = (value) => "₹" + Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
-const formatAmount = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
-function loadJson(key, fallback) {
-  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
-}
 function Badge({ children, green = false }) {
   return <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${green ? "bg-emerald-50 text-emerald-700 dark:text-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-app-surface-muted text-slate-600"}`}>{green && <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />}{children}</span>;
 }
@@ -38,12 +36,6 @@ function ServiceIcon({ service }) {
   return <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${service.bg} ${service.color}`}>
           <Icon size={18} strokeWidth={1.8}/>
           </span>;
-}
-function Notice({ children, icon: Icon = FlaskConical }) {
-  return <div className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-5 py-4 text-[13px] leading-6 text-app-text">
-          <Icon size={19} className="mt-0.5 shrink-0 text-amber-600"/>
-          <div>{children}</div>
-          </div>;
 }
 function validateRates(services) {
   for (const service of services) {
@@ -54,25 +46,42 @@ function validateRates(services) {
   return "";
 }
 export default function Pricing() {
-  const [savedDefaults, setSavedDefaults] = useState(() => {
-    const stored = loadJson(KEY_DEFAULTS, {});
-    return DEFAULT_SERVICES.map((s) => ({ ...s, provider: stored[s.id]?.provider ?? s.provider, selling: stored[s.id]?.selling ?? s.selling }));
-  });
-  const [draftDefaults, setDraftDefaults] = useState(() => savedDefaults.map((s) => ({ ...s })));
-  const [custom, setCustom] = useState(() => loadJson(KEY_CUSTOM, SEED_CUSTOM));
-  const [retailerId, setRetailerId] = useState("RT1001");
+  const [savedDefaults, setSavedDefaults] = useState([]);
+  const [draftDefaults, setDraftDefaults] = useState([]);
+  const [custom, setCustom] = useState({});
+  const [retailers, setRetailers] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  // Only the prices the admin has typed; untouched fields fall back to the saved custom/default price.
   const [draftCustom, setDraftCustom] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [savePreview, setSavePreview] = useState(null);
 
   const notify = (message, error = false) => { setToast({ message, error }); };
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 4500); return () => clearTimeout(t); }, [toast]);
-  useEffect(() => {
-    const prices = {};
-    savedDefaults.forEach((s) => { prices[s.id] = String(custom[retailerId]?.[s.id] ?? s.selling); });
-    setDraftCustom(prices);
-  }, [retailerId, custom, savedDefaults]);
+
+  const loadPricing = useCallback(() => api.get("/admin/pricing")
+    .then(({ data }) => {
+      const services = (data?.data?.services ?? []).map(toService).sort((a, b) => a.order - b.order);
+      setSavedDefaults(services);
+      setDraftDefaults(services.map((s) => ({ ...s })));
+      setCustom(data?.data?.overrides ?? {});
+      setRetailers((data?.data?.retailers ?? []).map(toRetailer));
+      setDraftCustom({});
+      setLoadError("");
+    })
+    .catch((err) => setLoadError(getErrorMessage(err, "Unable to load pricing.")))
+    .finally(() => setLoading(false)), []);
+
+  useEffect(() => { loadPricing(); }, [loadPricing]);
+
+  const retry = () => { setLoading(true); setLoadError(""); loadPricing(); };
+  const retailerId = retailers.some((r) => r.id === selectedId) ? selectedId : retailers[0]?.id ?? "";
+  const selectRetailer = (id) => { setSelectedId(id); setDraftCustom({}); };
+  const customValue = (s) => draftCustom[s.id] ?? String(custom[retailerId]?.[s.id] ?? s.selling);
 
   const totals = useMemo(() => draftDefaults.reduce((acc, s) => {
     const cost = Number(s.provider) || 0, price = Number(s.selling) || 0;
@@ -81,53 +90,76 @@ export default function Pricing() {
     acc.margin += s.usage * (price - cost);
     return acc;
   }, { usage: 0, revenue: 0, margin: 0 }), [draftDefaults]);
-  const customRows = useMemo(() => RETAILERS.filter((r) => Object.keys(custom[r.id] || {}).some((id) => {
+  const customRows = useMemo(() => retailers.filter((r) => Object.keys(custom[r.id] || {}).some((id) => {
     const service = savedDefaults.find((s) => s.id === id);
     return service && Number(custom[r.id][id]) !== Number(service.selling);
-  })), [custom, savedDefaults]);
-  const retailer = RETAILERS.find((r) => r.id === retailerId);
+  })), [custom, savedDefaults, retailers]);
+  const retailer = retailers.find((r) => r.id === retailerId);
   const changeDefault = (id, key, value) => setDraftDefaults((prev) => prev.map((s) => s.id === id ? { ...s, [key]: value } : s));
-  const saveDefaults = () => {
+  const saveDefaults = async () => {
+    if (saving || !draftDefaults.length) return;
     const error = validateRates(draftDefaults);
     if (error) return notify(error, true);
-    const next = draftDefaults.map((s) => ({ ...s, provider: Number(s.provider), selling: Number(s.selling) }));
-    localStorage.setItem(KEY_DEFAULTS, JSON.stringify(Object.fromEntries(next.map((s) => [s.id, { provider: s.provider, selling: s.selling }]))));
-    setSavedDefaults(next);
-    setDraftDefaults(next.map((s) => ({ ...s })));
-    notify("Default rate card saved successfully (demo only).");
+    setSaving(true);
+    try {
+      const { data } = await api.post("/admin/pricing/defaults", {
+        rates: draftDefaults.map((s) => ({ id: s.id, provider_cost: Number(s.provider), price: Number(s.selling) })),
+      });
+      notify(data?.message || "Default rate card saved successfully.");
+      await loadPricing();
+    } catch (err) {
+      notify(getErrorMessage(err, "Unable to save the default rate card."), true);
+    } finally {
+      setSaving(false);
+    }
   };
   const saveCustom = () => {
+    if (!retailer) return;
     const entries = {};
     for (const s of savedDefaults) {
-      const price = Number(draftCustom[s.id]);
-      if (draftCustom[s.id] === "" || !Number.isFinite(price) || price < 0) return notify(`${s.name}: enter a valid selling price.`, true);
+      const value = customValue(s);
+      const price = Number(value);
+      if (value === "" || !Number.isFinite(price) || price < 0) return notify(`${s.name}: enter a valid selling price.`, true);
       if (price < Number(s.provider)) return notify(`${s.name}: selling price cannot be lower than provider cost.`, true);
       if (Math.abs(price - Number(s.selling)) > 0.00001) entries[s.id] = price;
     }
     setSavePreview({ retailerId, retailerName: retailer.name, entries,
-      rows: savedDefaults.map((s) => ({ id: s.id, name: s.name, price: Number(draftCustom[s.id]), isDefault: entries[s.id] === undefined }))
+      rows: savedDefaults.map((s) => ({ id: s.id, name: s.name, price: Number(customValue(s)), isDefault: entries[s.id] === undefined }))
     });
   };
-  const confirmSaveCustom = () => {
-    if (!savePreview) return;
-    const next = { ...custom };
-    if (Object.keys(savePreview.entries).length) next[savePreview.retailerId] = savePreview.entries;
-    else delete next[savePreview.retailerId];
-    localStorage.setItem(KEY_CUSTOM, JSON.stringify(next));
-    setCustom(next);
-    notify(`Pricing saved for ${savePreview.retailerName} (demo only).`);
-    setSavePreview(null);
+  const confirmSaveCustom = async () => {
+    if (!savePreview || saving) return;
+    setSaving(true);
+    try {
+      // Every service is sent; the backend drops overrides that equal the default price.
+      const prices = Object.fromEntries(savePreview.rows.map((row) => [row.id, row.price]));
+      const { data } = await api.post("/admin/pricing/override", { retailer_id: savePreview.retailerId, prices });
+      notify(data?.message || `Pricing saved for ${savePreview.retailerName}.`);
+      setSavePreview(null);
+      await loadPricing();
+    } catch (err) {
+      notify(getErrorMessage(err, "Unable to save retailer pricing."), true);
+      setSavePreview(null);
+    } finally {
+      setSaving(false);
+    }
   };
-  const resetCustom = () => setConfirm({
+  const resetCustom = () => retailer && setConfirm({
     message: `Reset all custom prices for ${retailer.name} to the default rate card?`,
-    action: () => {
-      const next = { ...custom };
-      delete next[retailerId];
-      localStorage.setItem(KEY_CUSTOM, JSON.stringify(next));
-      setCustom(next);
-      setDraftCustom(Object.fromEntries(savedDefaults.map((s) => [s.id, String(s.selling)])));
-      setConfirm(null);
-      notify("Retailer prices reset to defaults.");
+    action: async () => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const { data } = await api.delete(`/admin/pricing/override/${retailerId}`);
+        notify(data?.message || "Retailer prices reset to defaults.");
+        setConfirm(null);
+        await loadPricing();
+      } catch (err) {
+        notify(getErrorMessage(err, "Unable to reset retailer pricing."), true);
+        setConfirm(null);
+      } finally {
+        setSaving(false);
+      }
     }
   });
   const exportCsv = () => {
@@ -156,7 +188,12 @@ export default function Pricing() {
         <button type="button" onClick={exportCsv} className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl border border-app-border bg-app-surface px-5 text-[13px] font-semibold shadow-sm hover:bg-app-surface-muted">
           <Download size={18}/>Export rate card</button>
       </div>
-      
+
+      {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700">
+          <span>{loadError}</span>
+          <button type="button" onClick={retry} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-[12px] font-semibold text-red-700 hover:bg-red-100"><RefreshCw size={15}/>Retry</button>
+          </div>}
+
 
       {/* Default rate card */}
       <section className="overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-sm">
@@ -168,15 +205,15 @@ export default function Pricing() {
           <p className="mt-1 text-[13px] text-app-text-secondary">Applied to every retailer without a custom price</p>
           </div>
           </div>
-          <button type="button" onClick={saveDefaults} className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg bg-[#2c52e8] px-4 text-[13px] font-semibold text-white hover:bg-[#2144cb]">
-          <Save size={17}/>Save defaults</button>
+          <button type="button" onClick={saveDefaults} disabled={saving || !draftDefaults.length} className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg bg-[#2c52e8] px-4 text-[13px] font-semibold text-white hover:bg-[#2144cb] disabled:opacity-60">
+          <Save size={17}/>{saving ? "Saving..." : "Save defaults"}</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-[13px]">
             <thead className="bg-app-surface-muted text-left text-[11px] uppercase tracking-wide text-app-text-muted">
           <tr>{["Service", "Provider cost (₹)", "Retailer selling price (₹)", "Gross margin", "Usage (30d)", "Est. monthly revenue", "Est. monthly margin"].map((x) => <th key={x} className="whitespace-nowrap px-5 py-4 font-bold">{x}</th>)}</tr>
           </thead>
-            <tbody>{draftDefaults.map((s) => { const margin = (Number(s.selling) || 0) - (Number(s.provider) || 0); const pct = Number(s.selling) > 0 ? (margin / Number(s.selling)) * 100 : 0; return <tr key={s.id} className="border-t border-app-border">
+            <tbody>{!draftDefaults.length && <tr><td colSpan={7} className="px-5 py-10 text-center text-app-text-secondary">{loading ? "Loading rate card..." : "No KYC services found."}</td></tr>}{draftDefaults.map((s) => { const margin = (Number(s.selling) || 0) - (Number(s.provider) || 0); const pct = Number(s.selling) > 0 ? (margin / Number(s.selling)) * 100 : 0; return <tr key={s.id} className="border-t border-app-border">
               <td className="px-5 py-4">
           <div className="flex items-center gap-2 whitespace-nowrap">
           <ServiceIcon service={s}/>
@@ -217,10 +254,10 @@ export default function Pricing() {
           <p className="mt-1 text-[13px] text-app-text-secondary">Override the default rate for an individual retailer (e.g. volume slabs)</p>
           </div>
           </div>
-          <select aria-label="Choose retailer" value={retailerId} onChange={(e) => setRetailerId(e.target.value)} className="h-12 w-full rounded-xl border border-app-border bg-app-surface px-4 text-[14px] outline-none focus:border-blue-500 md:max-w-[385px]">{RETAILERS.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.id}</option>)}</select>
+          <select aria-label="Choose retailer" value={retailerId} disabled={!retailers.length} onChange={(e) => selectRetailer(e.target.value)} className="h-12 w-full rounded-xl border border-app-border bg-app-surface px-4 text-[14px] outline-none focus:border-blue-500 md:max-w-[385px]">{retailers.length ? retailers.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.id}</option>) : <option value="">{loading ? "Loading retailers..." : "No retailers found"}</option>}</select>
         </div>
         <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
-          {savedDefaults.map((s) => { const price = Number(draftCustom[s.id]) || 0; const margin = price - Number(s.provider); const pct = price > 0 ? Math.round(margin / price * 100) : 0; const overridden = draftCustom[s.id] !== "" && Number(draftCustom[s.id]) !== Number(s.selling);
+          {retailer && savedDefaults.map((s) => { const value = customValue(s); const price = Number(value) || 0; const margin = price - Number(s.provider); const pct = price > 0 ? Math.round(margin / price * 100) : 0; const overridden = value !== "" && Number(value) !== Number(s.selling);
             return <div key={s.id} className="min-w-0 rounded-xl border border-[#e0e7f2] bg-app-surface-muted p-4">
               <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -232,7 +269,7 @@ export default function Pricing() {
               <label className="mb-2 mt-4 block text-[12px] font-semibold text-app-text-secondary" htmlFor={`price-${s.id}`}>Selling price for this retailer</label>
               <div className="flex h-12 overflow-hidden rounded-lg border border-app-border bg-app-surface focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
           <span className="flex items-center border-r border-app-border bg-app-surface-muted px-3 text-app-text-secondary">₹</span>
-          <input id={`price-${s.id}`} type="number" min="0" step="0.01" value={draftCustom[s.id] ?? ""} onChange={(e) => setDraftCustom((p) => ({ ...p, [s.id]: e.target.value }))} className="w-full min-w-0 bg-transparent px-3 text-[14px] outline-none"/>
+          <input id={`price-${s.id}`} type="number" min="0" step="0.01" value={value} onChange={(e) => setDraftCustom((p) => ({ ...p, [s.id]: e.target.value }))} className="w-full min-w-0 bg-transparent px-3 text-[14px] outline-none"/>
           </div>
               <div className="mt-4 space-y-4 text-[13px]">
           <div className="flex justify-between gap-2">
@@ -250,11 +287,12 @@ export default function Pricing() {
           </div>
             </div>;
           })}
+          {!retailer && <p className="text-[13px] text-app-text-secondary sm:col-span-2 xl:col-span-4">{loading ? "Loading retailers..." : "No retailers found. Add a retailer to set custom pricing."}</p>}
         </div>
         <div className="flex flex-col justify-end gap-3 border-t border-app-border px-5 py-4 sm:flex-row sm:items-center sm:px-6">
-          <button type="button" onClick={resetCustom} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-semibold text-app-text-secondary hover:bg-app-surface-muted">
+          <button type="button" onClick={resetCustom} disabled={saving || !retailer || !custom[retailerId]} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-semibold text-app-text-secondary hover:bg-app-surface-muted disabled:opacity-50">
           <RotateCcw size={17}/>Reset to defaults</button>
-          <button type="button" onClick={saveCustom} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2c52e8] px-5 text-[13px] font-semibold text-white hover:bg-[#2144cb]">
+          <button type="button" onClick={saveCustom} disabled={saving || !retailer} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2c52e8] px-5 text-[13px] font-semibold text-white hover:bg-[#2144cb] disabled:opacity-60">
           <Save size={17}/>Save retailer pricing</button>
           </div>
       </section>
@@ -317,8 +355,8 @@ export default function Pricing() {
           </div>
         </div>
         <div className="flex justify-end gap-3 border-t border-app-border bg-app-surface-muted px-5 py-4 sm:px-7">
-          <button type="button" onClick={() => setSavePreview(null)} className="rounded-lg border border-app-border bg-app-surface px-5 py-2.5 text-[14px] font-semibold text-app-text shadow-sm hover:bg-app-surface-muted">Cancel</button>
-          <button type="button" onClick={confirmSaveCustom} className="rounded-lg bg-[#2c52e8] px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm hover:bg-[#2144cb]">Save pricing</button>
+          <button type="button" disabled={saving} onClick={() => setSavePreview(null)} className="rounded-lg border border-app-border bg-app-surface px-5 py-2.5 text-[14px] font-semibold text-app-text shadow-sm hover:bg-app-surface-muted">Cancel</button>
+          <button type="button" disabled={saving} onClick={confirmSaveCustom} className="rounded-lg bg-[#2c52e8] px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm hover:bg-[#2144cb] disabled:opacity-60">{saving ? "Saving..." : "Save pricing"}</button>
         </div>
       </div>
     </div>}
@@ -332,8 +370,8 @@ export default function Pricing() {
           <h3 className="text-lg font-bold">Reset retailer pricing?</h3>
           <p className="mt-3 text-sm leading-6 text-app-text-secondary">{confirm.message}</p>
           <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={() => setConfirm(null)} className="rounded-lg border border-app-border px-4 py-2 text-sm font-semibold">Cancel</button>
-          <button type="button" onClick={confirm.action} className="rounded-lg bg-[#2c52e8] px-4 py-2 text-sm font-semibold text-white">Reset prices</button>
+          <button type="button" disabled={saving} onClick={() => setConfirm(null)} className="rounded-lg border border-app-border px-4 py-2 text-sm font-semibold">Cancel</button>
+          <button type="button" disabled={saving} onClick={confirm.action} className="rounded-lg bg-[#2c52e8] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Resetting..." : "Reset prices"}</button>
           </div>
           </div>
           </div>}

@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import api, { ACCOUNT_UPDATED_EVENT } from "../../api";
+import { getUser, updateStoredUser } from "../../auth";
+import useNotifications from "../../hooks/useNotifications";
 import {
   Search, Moon, Sun, Bell, ChevronDown, ChevronRight, Menu,
   LogOut, UserRound, CheckCheck, Info, TriangleAlert, CircleCheck,
@@ -12,25 +15,6 @@ const pageNames = {
   reports: "Reports & Analytics", settings: "Settings",
 };
 
-const defaultNotifications = [
-  { id: 1, type: "info", title: "New fund request", description: "Shree Ganesh Mobile Point requested a ₹5,000 wallet top-up.", time: "3 hr ago", read: false },
-  { id: 2, type: "warning", title: "Aadhaar OTP latency", description: "OTP delivery averaged 9s between 11:00–11:20 (demo alert).", time: "5 hr ago", read: false },
-  { id: 3, type: "info", title: "New fund request", description: "Balaji Online Seva requested a ₹2,000 wallet top-up.", time: "6 hr ago", read: false },
-  { id: 4, type: "success", title: "Monthly report generated", description: "September 2026 verification report is ready to download.", time: "Yesterday", read: true },
-  { id: 5, type: "success", title: "Verification services healthy", description: "All configured demo services are responding normally.", time: "Yesterday", read: true },
-];
-const notificationStorageKey = "verifyhub-header-notifications-v1";
-const defaultProfile = { name: "Arvind Mehta", email: "admin@verifyhub.demo" };
-function readProfile() {
-  try { return { ...defaultProfile, ...JSON.parse(localStorage.getItem("verifyhub-settings-profile") || "{}") }; }
-  catch { return defaultProfile; }
-}
-function readNotifications() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(notificationStorageKey) || "null");
-    return Array.isArray(saved) ? saved : defaultNotifications;
-  } catch { return defaultNotifications; }
-}
 
 export default function Header({
   setMobileOpen = () => {}, darkMode = false, setDarkMode = () => {},
@@ -45,30 +29,30 @@ export default function Header({
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notifications, setNotifications] = useState(readNotifications);
-  const [profile, setProfile] = useState(readProfile);
+  const { notifications, unreadCount, markRead, markAllRead, reload: reloadNotifications } = useNotifications();
+  // Name and email come from GET /auth/me; the stored login user is shown until it loads.
+  const [profile, setProfile] = useState(() => getUser() ?? {});
   const searchRef = useRef(null);
   const menuRef = useRef(null);
-  const unreadCount = notifications.filter((item) => !item.read).length;
   const searchResults = Object.entries(pageNames).filter(([, name]) =>
     name.toLowerCase().includes(search.toLowerCase().trim())
   );
 
-  useEffect(() => {
-    localStorage.setItem(notificationStorageKey, JSON.stringify(notifications));
-  }, [notifications]);
-  useEffect(() => {
-    const refresh = () => setProfile(readProfile());
-    const reset = () => { refresh(); setNotifications(defaultNotifications); };
-    window.addEventListener("verifyhub-profile-updated", refresh);
-    window.addEventListener("verifyhub-demo-reset", reset);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener("verifyhub-profile-updated", refresh);
-      window.removeEventListener("verifyhub-demo-reset", reset);
-      window.removeEventListener("storage", refresh);
-    };
+  const loadProfile = useCallback(() => {
+    api.get("/auth/me")
+      .then(({ data }) => {
+        const me = data?.data;
+        if (!me) return;
+        setProfile((old) => ({ ...old, ...me }));
+        updateStoredUser({ name: me.name, email: me.email });
+      })
+      .catch(() => {});
   }, []);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+  useEffect(() => {
+    window.addEventListener(ACCOUNT_UPDATED_EVENT, loadProfile);
+    return () => window.removeEventListener(ACCOUNT_UPDATED_EVENT, loadProfile);
+  }, [loadProfile]);
   useEffect(() => {
     const handleKeyDown = (event) => {
       const target = event.target;
@@ -93,10 +77,12 @@ export default function Header({
     navigate(`/super-admin/${slug}`);
     setSearch(""); setSearchOpen(false);
   };
-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  const markRead = (id) => setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+  const openNotification = (item) => {
+    if (!item.read) markRead(item.id);
+    if (item.link) { setNotificationOpen(false); navigate(item.link); }
+  };
   const menuAction = (callback) => { setProfileOpen(false); callback(); };
-  const initials = profile.name?.trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "AM";
+  const initials = profile.name?.trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "SA";
   const menuClass = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] text-app-text hover:bg-app-surface-muted";
 
   return (
@@ -123,7 +109,7 @@ export default function Header({
         </div>
         <button type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"} className="flex h-10 w-10 items-center justify-center rounded-lg text-app-text hover:bg-app-surface-muted">{darkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
         <div className="relative">
-          <button type="button" onClick={() => { setNotificationOpen(!notificationOpen); setProfileOpen(false); }} aria-label="Notifications" aria-expanded={notificationOpen} className="relative flex h-10 w-10 items-center justify-center rounded-lg text-app-text hover:bg-app-surface-muted">
+          <button type="button" onClick={() => { if (!notificationOpen) reloadNotifications(); setNotificationOpen(!notificationOpen); setProfileOpen(false); }} aria-label="Notifications" aria-expanded={notificationOpen} className="relative flex h-10 w-10 items-center justify-center rounded-lg text-app-text hover:bg-app-surface-muted">
             <Bell size={20} />
             {unreadCount > 0 && <span className="absolute right-[8px] top-[6px] h-[8px] w-[8px] rounded-full border border-app-surface bg-red-500" />}
           </button>
@@ -134,11 +120,12 @@ export default function Header({
                 <button type="button" onClick={markAllRead} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-app-text-secondary hover:text-primary"><CheckCheck size={16} />Mark all read</button>
               </div>
               <div className="max-h-[450px] overflow-y-auto overscroll-contain">
+                {notifications.length === 0 && <p className="px-5 py-10 text-center text-[13px] text-app-text-secondary">No notifications yet.</p>}
                 {notifications.map((item) => {
                   const Icon = item.type === "warning" ? TriangleAlert : item.type === "success" ? CircleCheck : Info;
                   const iconClass = item.type === "warning" ? "bg-amber-100 text-amber-600" : item.type === "success" ? "bg-emerald-100 text-emerald-600" : "bg-blue-50 text-blue-600";
                   return (
-                    <button key={item.id} type="button" onClick={() => markRead(item.id)} className={`flex w-full items-start gap-4 border-b border-app-border px-5 py-5 text-left transition last:border-b-0 hover:bg-app-surface-muted ${item.read ? "bg-app-surface" : "bg-primary/5"}`}>
+                    <button key={item.id} type="button" onClick={() => openNotification(item)} className={`flex w-full items-start gap-4 border-b border-app-border px-5 py-5 text-left transition last:border-b-0 hover:bg-app-surface-muted ${item.read ? "bg-app-surface" : "bg-primary/5"}`}>
                       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconClass}`}><Icon size={20} /></div>
                       <div className="min-w-0 flex-1">
                         <p className="text-[14px] font-bold leading-5 text-app-text">{item.title}</p>
@@ -156,7 +143,7 @@ export default function Header({
         <div className="relative">
           <button type="button" onClick={() => { setProfileOpen(!profileOpen); setNotificationOpen(false); }} aria-expanded={profileOpen} className="flex items-center gap-2 rounded-lg p-1 text-left hover:bg-app-surface-muted sm:gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#087b70] text-[12px] font-bold text-white">{initials}</div>
-            <div className="hidden min-w-0 lg:block"><p className="text-[12px] font-semibold text-app-text">{profile.name}</p><p className="text-[11px] text-app-text-secondary">Super Admin</p></div>
+            <div className="hidden min-w-0 lg:block"><p className="text-[12px] font-semibold text-app-text">{profile.name || "Super Admin"}</p><p className="text-[11px] text-app-text-secondary">Super Admin</p></div>
             <ChevronDown size={17} className="hidden text-app-text-secondary sm:block" />
           </button>
           {profileOpen && (

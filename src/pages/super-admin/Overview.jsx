@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
+
+import api, { getErrorMessage } from "../../api";
+
+import { getUser } from "../../auth";
 
 import {
 
@@ -14,13 +18,13 @@ import {
 
   Fingerprint, Landmark, CreditCard, FileSignature, HandCoins,
 
-  AlertTriangle, FileCheck2, TrendingUp, TrendingDown, X, Eye, EyeOff, RefreshCw, CheckCircle2
+  TrendingUp, TrendingDown, X, Eye, EyeOff, RefreshCw, CheckCircle2
 
 } from "lucide-react";
 
 import {
 
-  ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
+  ResponsiveContainer, AreaChart, Area, Line, Bar,
 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell,
 
@@ -28,113 +32,82 @@ import {
 
 } from "recharts";
 
-// All values are illustrative demo data. Replace with API responses later.
+// All dashboard data comes from GET /admin/overview.
 
 const chartTheme = { color: "var(--app-text-secondary)" };
 
-const metrics = [
+const SERVICE_META = {
 
-  { label: "Total Retailers", value: "12", icon: Store, bg: "#eef2ff", color: "#2451ea", note: "+2 onboarded in 30 days" },
+  aadhaar: { label: "Aadhaar", rateLabel: "Aadhaar verification", color: "#6845e8" },
 
-  { label: "Active Retailers", value: "10", icon: UserRoundCheck, bg: "#e5f7ed", color: "#078448", note: "83% of network active" },
+  pan: { label: "PAN", rateLabel: "PAN verification", color: "#2850e8" },
 
-  { label: "Total KYC Verifications", value: "547", icon: ShieldCheck, bg: "#f0eaff", color: "#683bea", change: "2.4%", note: "last 30 days vs prior", positive: true },
+  bank: { label: "Bank", rateLabel: "Bank verification", color: "#0b83c7" },
 
-  { label: "Successful Verifications", value: "497", icon: BadgeCheck, bg: "#e5f7ed", color: "#078448", change: "13.3%", note: "90.9% success rate", positive: true },
+  esign: { label: "e-Sign", rateLabel: "e-Sign verification", color: "#0d9388" },
 
-  { label: "Failed Verifications", value: "50", icon: CircleX, bg: "#ffebee", color: "#e02836", change: "57.9%", down: true, note: "9.1% of all requests", positive: true },
+};
 
-  { label: "Today's Transactions", value: "0", icon: Activity, bg: "#e6f4ff", color: "#087cbe", change: "100.0%", down: true, note: "₹0 billed · pace vs 7-day avg", positive: false },
+const formatINR = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
-  { label: "Total Revenue", value: "₹9,280", icon: IndianRupee, bg: "#eef2ff", color: "#2451ea", change: "1.2%", note: "gross billed to retailers", positive: true },
+const formatCount = (value) => Number(value || 0).toLocaleString("en-IN");
 
-  { label: "Wallet Transactions", value: "559", icon: ArrowLeftRight, bg: "#fff2df", color: "#d97706", change: "4.0%", note: "₹45,000 credited in total", positive: true },
+function timeAgo(iso) {
 
-];
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
 
-const monthly = [
+  if (!Number.isFinite(minutes)) return "";
 
-  { month: "May", verified: 55, failed: 0, pending: 0, revenue: 1050, cost: 450, margin: 600 },
+  if (minutes < 1) return "just now";
 
-  { month: "Jun", verified: 60, failed: 8, pending: 0, revenue: 1150, cost: 470, margin: 680 },
+  if (minutes < 60) return `${minutes}m ago`;
 
-  { month: "Jul", verified: 73, failed: 5, pending: 0, revenue: 1230, cost: 490, margin: 740 },
+  const hours = Math.floor(minutes / 60);
 
-  { month: "Aug", verified: 98, failed: 11, pending: 0, revenue: 1790, cost: 730, margin: 1060 },
+  if (hours < 24) return `${hours}h ago`;
 
-  { month: "Sept", verified: 112, failed: 16, pending: 0, revenue: 2230, cost: 945, margin: 1285 },
+  return `${Math.floor(hours / 24)}d ago`;
 
-  { month: "Oct", verified: 88, failed: 8, pending: 0, revenue: 1650, cost: 670, margin: 980 },
+}
 
-];
+function greeting() {
 
-const categories = [
+  const hour = new Date().getHours();
 
-  { name: "Aadhaar Verification (OTP)", value: 167, percent: 31, color: "#6845e8" },
+  return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  { name: "PAN Card Verification", value: 171, percent: 31, color: "#2850e8" },
+}
 
-  { name: "Bank Account Verification (Penny Drop)", value: 136, percent: 25, color: "#0b83c7" },
+// The backend's KPI "trend" percentages are hardcoded placeholders, so they are
+// intentionally not shown; only real counts, amounts and subtexts are displayed.
 
-  { name: "Consent Letter with e-Sign", value: 73, percent: 13, color: "#0d9388" },
+function buildMetrics(kpis) {
 
-];
+  const value = (key, format = formatCount) => (kpis?.[key] ? format(kpis[key].value) : "—");
 
-const successServices = [
+  const note = (key) => kpis?.[key]?.subtext ?? "";
 
-  { name: "Aadhaar verification", rate: 92.8, color: "#6845e8" },
+  return [
 
-  { name: "PAN verification", rate: 88.9, color: "#2850e8" },
+    { label: "Total Retailers", value: value("total_retailers"), icon: Store, bg: "#eef2ff", color: "#2451ea", note: note("total_retailers") },
 
-  { name: "Bank verification", rate: 89.0, color: "#0b83c7" },
+    { label: "Active Retailers", value: value("active_retailers"), icon: UserRoundCheck, bg: "#e5f7ed", color: "#078448", note: note("active_retailers") },
 
-  { name: "e-Sign verification", rate: 94.5, color: "#0d9388" },
+    { label: "Total KYC Verifications", value: value("total_verifications"), icon: ShieldCheck, bg: "#f0eaff", color: "#683bea", note: kpis ? "all-time requests" : "" },
 
-];
+    { label: "Successful Verifications", value: value("successful_verifications"), icon: BadgeCheck, bg: "#e5f7ed", color: "#078448", note: note("successful_verifications") },
 
-const records = [
+    { label: "Failed Verifications", value: value("failed_verifications"), icon: CircleX, bg: "#ffebee", color: "#e02836", note: note("failed_verifications") },
 
-  { id: "VRF26102154232", retailer: "Green Valley Traders", service: "Aadhaar", doc: "XXXX XXXX 0442", status: "Verified", amount: 20, ago: "1d ago" },
+    { label: "Today's Transactions", value: value("todays_transactions"), icon: Activity, bg: "#e6f4ff", color: "#087cbe", note: note("todays_transactions") },
 
-  { id: "VRF26102133499", retailer: "Sai Digital Services", service: "Bank", doc: "XXXXXX1027", status: "Verified", amount: 15, ago: "2d ago" },
+    { label: "Total Revenue", value: value("total_revenue", formatINR), icon: IndianRupee, bg: "#eef2ff", color: "#2451ea", note: note("total_revenue") },
 
-  { id: "VRF26102133346", retailer: "Metro Fintech Hub", service: "PAN", doc: "MWXXXXX51Q", status: "Verified", amount: 10, ago: "2d ago" },
+    { label: "Wallet Transactions", value: value("wallet_transactions"), icon: ArrowLeftRight, bg: "#fff2df", color: "#d97706", note: note("wallet_transactions") },
 
-  { id: "VRF26102105816", retailer: "Royal Enterprises", service: "PAN", doc: "CFXXXXX51Q", status: "Failed", amount: 10, ago: "2d ago" },
+  ];
 
-  { id: "VRF26102160045", retailer: "Metro Fintech Hub", service: "Aadhaar", doc: "XXXX XXXX 4682", status: "Verified", amount: 20, ago: "2d ago" },
-
-  { id: "VRF26102158760", retailer: "Metro Fintech Hub", service: "Bank", doc: "XXXXXX9833", status: "Verified", amount: 15, ago: "2d ago" },
-
-  { id: "VRF26102061119", retailer: "Shree Ganesh Mobile Point", service: "e-Sign", doc: "CL-2610209040", status: "Verified", amount: 30, ago: "2d ago" },
-
-];
-
-const topRetailers = [
-
-  { name: "Royal Enterprises", amount: 400, checks: 20 },
-
-  { name: "Annapurna Finserv Kendra", amount: 290, checks: 17 },
-
-  { name: "Green Valley Traders", amount: 255, checks: 12 },
-
-  { name: "Metro Fintech Hub", amount: 250, checks: 17 },
-
-  { name: "Balaji Online Seva", amount: 200, checks: 10 },
-
-];
-
-const initialAlerts = [
-
-  { id: 1, title: "Fund request · ₹5,000", detail: "Shree Ganesh Mobile Point · 2d ago", icon: HandCoins, path: "/super-admin/wallet" },
-
-  { id: 2, title: "Fund request · ₹2,000", detail: "Balaji Online Seva · 2d ago", icon: HandCoins, path: "/super-admin/wallet" },
-
-  { id: 3, title: "Aadhaar OTP latency", detail: "Provider response time elevated · 3d ago", icon: AlertTriangle, path: "/super-admin/kyc-services" },
-
-  { id: 4, title: "Monthly report generated", detail: "September summary available · 4d ago", icon: FileCheck2, path: "/super-admin/reports" },
-
-];
+}
 
 const card = "min-w-0 overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-[0_1px_3px_rgba(17,36,75,0.07)]";
 
@@ -220,7 +193,7 @@ function MetricCard({ item }) {
 
 }
 
-function TrendPanel({ navigate }) {
+function TrendPanel({ navigate, monthly }) {
 
   return (
 
@@ -258,9 +231,9 @@ function TrendPanel({ navigate }) {
 
             <CartesianGrid stroke="var(--app-border)" vertical={false} />
 
-            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} dy={9} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} dy={9} />
 
-            <YAxis domain={[0, 120]} ticks={[0, 20, 40, 60, 80, 100, 120]} axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} />
+            <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} />
 
             <Tooltip contentStyle={{ borderRadius: 12, borderColor: "var(--app-border)", backgroundColor: "var(--app-surface)", color: "var(--app-text)" }} />
 
@@ -284,7 +257,19 @@ function TrendPanel({ navigate }) {
 
 }
 
-function CategoryPanel() {
+function CategoryPanel({ distribution }) {
+
+  const categories = (distribution?.items ?? []).map((item) => ({
+
+    name: item.name,
+
+    value: Number(item.count) || 0,
+
+    percent: Number(item.percentage) || 0,
+
+    color: SERVICE_META[item.id]?.color ?? item.color,
+
+  }));
 
   return (
 
@@ -312,7 +297,7 @@ function CategoryPanel() {
 
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
 
-          <span className="text-[32px] font-bold text-app-text">547</span>
+          <span className="text-[32px] font-bold text-app-text">{distribution ? formatCount(distribution.total) : "—"}</span>
 
           <span className="text-[12px] text-app-text-secondary">total requests</span>
 
@@ -344,19 +329,19 @@ function CategoryPanel() {
 
 }
 
-function RevenuePanel() {
+function RevenuePanel({ analytics, monthly }) {
 
   return (
 
     <section className={`${card} p-5 sm:p-6`}>
 
-      <SectionTitle icon={BarChart3} title="Revenue analytics" subtitle="Retailer billing vs provider cost — illustrative demo pricing"
+      <SectionTitle icon={BarChart3} title="Revenue analytics" subtitle="Retailer billing vs provider cost · last 6 months"
 
         action={<div className="flex gap-5">
 
-          <div><p className={muted}>Gross margin (30d)</p><p className="text-[19px] font-bold text-app-text">₹1,285</p></div>
+          <div><p className={muted}>Gross margin (30d)</p><p className="text-[19px] font-bold text-app-text">{analytics ? formatINR(analytics.gross_margin_30d) : "—"}</p></div>
 
-          <div><p className={muted}>Margin %</p><p className="text-[19px] font-bold text-app-text">58.5%</p></div>
+          <div><p className={muted}>Margin %</p><p className="text-[19px] font-bold text-app-text">{analytics ? `${analytics.margin_percentage_30d}%` : "—"}</p></div>
 
         </div>}
 
@@ -370,9 +355,9 @@ function RevenuePanel() {
 
             <CartesianGrid stroke="var(--app-border)" vertical={false} />
 
-            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} dy={8} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 12 }} dy={8} />
 
-            <YAxis domain={[0, 2500]} ticks={[0, 500, 1000, 1500, 2000, 2500]} tickFormatter={(v) => `₹${v.toLocaleString("en-IN")}`} axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} width={65} />
+            <YAxis tickFormatter={(v) => `₹${v.toLocaleString("en-IN")}`} axisLine={false} tickLine={false} tick={{ fill: "var(--app-text-secondary)", fontSize: 11 }} width={65} />
 
             <Tooltip formatter={(value) => `₹${Number(value).toLocaleString("en-IN")}`} contentStyle={{ borderRadius: 12, borderColor: "var(--app-border)", backgroundColor: "var(--app-surface)", color: "var(--app-text)" }} />
 
@@ -396,9 +381,27 @@ function RevenuePanel() {
 
 }
 
-function SuccessPanel() {
+function SuccessPanel({ rates, hasVerifications }) {
 
-  const rate = 90.9;
+  const rate = Math.min(100, Math.max(0, Number(rates?.overall) || 0));
+
+  // Gauge arc: centre (170,168), radius 144, sweeping from 180° (left) to 0° (right).
+
+  const angle = Math.PI * (1 - rate / 100);
+
+  const endX = (170 + 144 * Math.cos(angle)).toFixed(1);
+
+  const endY = (168 - 144 * Math.sin(angle)).toFixed(1);
+
+  const successServices = Object.entries(rates?.services ?? {}).map(([id, value]) => ({
+
+    name: SERVICE_META[id]?.rateLabel ?? id,
+
+    rate: Number(value) || 0,
+
+    color: SERVICE_META[id]?.color ?? "#2850e8",
+
+  }));
 
   return (
 
@@ -408,17 +411,17 @@ function SuccessPanel() {
 
       <div className="relative mx-auto mt-6 h-[175px] w-full max-w-[340px] overflow-hidden">
 
-        <svg viewBox="0 0 340 185" className="h-full w-full" aria-label="Verification success rate 90.9 percent">
+        <svg viewBox="0 0 340 185" className="h-full w-full" aria-label={`Verification success rate ${rate} percent`}>
 
-          <path d="M 26 168 A 144 144 0 0 1 314 168" fill="none" stroke="#e83b47" strokeWidth="37" strokeLinecap="butt" />
+          <path d="M 26 168 A 144 144 0 0 1 314 168" fill="none" stroke={hasVerifications ? "#e83b47" : "var(--app-border)"} strokeWidth="37" strokeLinecap="butt" />
 
-          <path d="M 26 168 A 144 144 0 0 1 307.9 126" fill="none" stroke="#0f9857" strokeWidth="37" strokeLinecap="butt" />
+          {rate > 0 && <path d={`M 26 168 A 144 144 0 0 1 ${endX} ${endY}`} fill="none" stroke="#0f9857" strokeWidth="37" strokeLinecap="butt" />}
 
         </svg>
 
         <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pb-1">
 
-          <strong className="text-[34px] leading-none text-app-text">90.9%</strong>
+          <strong className="text-[34px] leading-none text-app-text">{rates ? `${rate}%` : "—"}</strong>
 
           <span className="mt-2 text-[13px] text-app-text-secondary">verified</span>
 
@@ -472,13 +475,31 @@ function ServiceIcon({ service }) {
 
   };
 
-  const { Icon, bg, color } = configs[service];
+  const { Icon, bg, color } = configs[service] ?? configs.PAN;
 
   return <span className="flex items-center gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: bg, color }}><Icon size={17} /></span>{service}</span>;
 
 }
 
-function ActivityPanel({ navigate }) {
+function ActivityPanel({ navigate, activity, loading }) {
+
+  const records = (activity ?? []).map((item) => ({
+
+    id: item.id,
+
+    retailer: item.retailer_name,
+
+    service: SERVICE_META[item.service]?.label ?? item.service,
+
+    doc: item.doc,
+
+    status: item.status === "verified" ? "Verified" : item.status === "failed" ? "Failed" : "Pending",
+
+    amount: item.amount,
+
+    ago: timeAgo(item.created_at),
+
+  }));
 
   return (
 
@@ -506,6 +527,12 @@ function ActivityPanel({ navigate }) {
 
           <tbody>
 
+            {!records.length && (
+
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-app-text-secondary">{loading ? "Loading recent activity..." : "No verification records found."}</td></tr>
+
+            )}
+
             {records.map((record) => (
 
               <tr key={record.id} className="border-b border-app-border last:border-b-0 hover:bg-app-surface-muted">
@@ -518,9 +545,9 @@ function ActivityPanel({ navigate }) {
 
                 <td className="whitespace-nowrap px-4 py-4 font-mono text-[12px] text-app-text">{record.doc}</td>
 
-                <td className="px-4 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${record.status === "Verified" ? "bg-[#e5f7ed] text-[#078448]" : "bg-[#ffebee] text-[#df2737]"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{record.status}</span></td>
+                <td className="px-4 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${record.status === "Verified" ? "bg-[#e5f7ed] text-[#078448]" : record.status === "Failed" ? "bg-[#ffebee] text-[#df2737]" : "bg-[#fff2df] text-[#b45309]"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{record.status}</span></td>
 
-                <td className="whitespace-nowrap px-4 py-4 text-right text-[13px] font-bold text-app-text">₹{record.amount}</td>
+                <td className="whitespace-nowrap px-4 py-4 text-right text-[13px] font-bold text-app-text">{formatINR(record.amount)}</td>
 
               </tr>
 
@@ -538,7 +565,11 @@ function ActivityPanel({ navigate }) {
 
 }
 
-function RetailersPanel() {
+function RetailersPanel({ retailers, loading }) {
+
+  const topRetailers = (retailers ?? []).map((item) => ({ id: item.id, name: item.shop, amount: Number(item.total_spent) || 0, checks: item.checks_count }));
+
+  const maxAmount = Math.max(0, ...topRetailers.map((item) => item.amount));
 
   return (
 
@@ -546,13 +577,15 @@ function RetailersPanel() {
 
       <div className="border-b border-app-border p-5 sm:p-6">
 
-        <SectionTitle icon={Trophy} title="Top performing retailers" subtitle="By billed volume · last 30 days" />
+        <SectionTitle icon={Trophy} title="Top performing retailers" subtitle="By billed volume · all time" />
 
       </div>
 
+      {!topRetailers.length && <p className="p-6 text-[13px] text-app-text-secondary">{loading ? "Loading retailers..." : "No retailers found."}</p>}
+
       {topRetailers.map((retailer, i) => (
 
-        <div key={retailer.name} className="flex items-center gap-3 border-b border-app-border px-5 py-4 last:border-b-0">
+        <div key={retailer.id} className="flex items-center gap-3 border-b border-app-border px-5 py-4 last:border-b-0">
 
           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold ${i === 0 ? "bg-[#fff1cc] text-[#936100]" : i === 2 ? "bg-[#ffebdf] text-[#a14c19]" : "bg-[#eef2f7] text-[#42577a]"}`}>{i + 1}</div>
 
@@ -562,7 +595,7 @@ function RetailersPanel() {
 
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-app-surface-muted">
 
-              <div className="h-full rounded-full bg-[#2850e8]" style={{ width: `${(retailer.amount / 400) * 100}%` }} />
+              <div className="h-full rounded-full bg-[#2850e8]" style={{ width: `${maxAmount ? (retailer.amount / maxAmount) * 100 : 0}%` }} />
 
             </div>
 
@@ -570,7 +603,7 @@ function RetailersPanel() {
 
           <div className="shrink-0 text-right">
 
-            <p className="text-[13px] font-bold text-app-text">₹{retailer.amount}</p>
+            <p className="text-[13px] font-bold text-app-text">{formatINR(retailer.amount)}</p>
 
             <p className="mt-1 text-[11px] text-app-text-secondary">{retailer.checks} checks</p>
 
@@ -586,11 +619,28 @@ function RetailersPanel() {
 
 }
 
-function AlertsPanel({ navigate }) {
+// Only real pending fund requests are shown; the backend's static "notifications"
+// entries in /admin/overview are demo placeholders and are skipped.
+
+function AlertsPanel({ navigate, fundRequests, loading }) {
 
   const [dismissed, setDismissed] = useState([]);
 
-  const visibleAlerts = initialAlerts.filter((alert) => !dismissed.includes(alert.id));
+  const alerts = (fundRequests ?? []).map((request) => ({
+
+    id: request.id,
+
+    title: `Fund request · ${formatINR(request.amount)}`,
+
+    detail: `${request.retailer_name} · ${timeAgo(request.created_at)}`,
+
+    icon: HandCoins,
+
+    path: "/super-admin/wallet",
+
+  }));
+
+  const visibleAlerts = alerts.filter((alert) => !dismissed.includes(alert.id));
 
   return (
 
@@ -626,7 +676,7 @@ function AlertsPanel({ navigate }) {
 
         );
 
-      }) : <p className="p-6 text-[13px] text-app-text-secondary">No pending alerts.</p>}
+      }) : <p className="p-6 text-[13px] text-app-text-secondary">{loading ? "Loading alerts..." : "No pending alerts."}</p>}
 
     </section>
 
@@ -634,23 +684,7 @@ function AlertsPanel({ navigate }) {
 
 }
 
-// These dialogs are frontend demos. No money is moved and no real account is created.
-
-const retailerOptions = [
-
-  "Annapurna Finserv Kendra · RT1003",
-
-  "Shree Ganesh Mobile Point · RT1001",
-
-  "Balaji Online Seva · RT1002",
-
-  "Royal Enterprises · RT1004",
-
-  "Green Valley Traders · RT1005",
-
-  "Metro Fintech Hub · RT1006",
-
-];
+// Wallet adjustment → POST /admin/wallet/adjust, new retailer → POST /admin/retailers.
 
 function createReference() {
 
@@ -712,7 +746,13 @@ const secondaryBtn = "inline-flex min-h-11 items-center justify-center rounded-x
 
 function WalletDialog({ onClose, onSaved }) {
 
-  const [retailer, setRetailer] = useState(retailerOptions[0]);
+  const [retailers, setRetailers] = useState([]);
+
+  const [retailerId, setRetailerId] = useState("");
+
+  const [loadingRetailers, setLoadingRetailers] = useState(true);
+
+  const [saving, setSaving] = useState(false);
 
   const [type, setType] = useState("credit");
 
@@ -728,11 +768,43 @@ function WalletDialog({ onClose, onSaved }) {
 
   const [error, setError] = useState("");
 
+  useEffect(() => {
+
+    let active = true;
+
+    api.get("/admin/retailers")
+
+      .then(({ data }) => {
+
+        if (!active) return;
+
+        const list = data?.data ?? [];
+
+        setRetailers(list);
+
+        setRetailerId(list[0]?.id ?? "");
+
+      })
+
+      .catch((err) => { if (active) setError(getErrorMessage(err, "Unable to load retailers.")); })
+
+      .finally(() => { if (active) setLoadingRetailers(false); });
+
+    return () => { active = false; };
+
+  }, []);
+
+  const selectedRetailer = retailers.find((item) => item.id === retailerId);
+
+  const retailerLabel = selectedRetailer ? `${selectedRetailer.shop} · ${selectedRetailer.id}` : "";
+
   const validate = () => {
 
     const n = Number(amount);
 
-    if (!retailer || !Number.isFinite(n) || n <= 0) { setError("Please select a retailer and enter an amount greater than ₹0."); return; }
+    if (!retailerId || !Number.isFinite(n) || n < 1) { setError("Please select a retailer and enter an amount of at least ₹1."); return; }
+
+    if (type === "debit" && selectedRetailer && n > selectedRetailer.wallet) { setError(`Insufficient balance. Available: ${formatINR(selectedRetailer.wallet)}.`); return; }
 
     if (!reference.trim()) { setError("Transaction reference number is required."); return; }
 
@@ -740,35 +812,47 @@ function WalletDialog({ onClose, onSaved }) {
 
   };
 
-  const save = () => {
+  const save = async () => {
 
-    const transaction = { id: reference.trim(), retailer, type, amount: Number(amount), mode, remarks: remarks.trim(), createdAt: new Date().toISOString() };
+    if (saving) return;
+
+    setSaving(true);
+
+    setError("");
 
     try {
 
-      const existing = JSON.parse(localStorage.getItem("verifyhub-demo-wallet-adjustments") || "[]");
+      const { data } = await api.post("/admin/wallet/adjust", { retailer_id: retailerId, type, amount: Number(amount), mode, ref: reference.trim(), note: remarks.trim() || undefined });
 
-      localStorage.setItem("verifyhub-demo-wallet-adjustments", JSON.stringify([transaction, ...existing]));
+      onSaved(`${type === "credit" ? "Credit" : "Debit"} of ${formatINR(amount)} applied. New balance: ${formatINR(data?.data?.wallet?.balance)}.`);
 
-    } catch { localStorage.setItem("verifyhub-demo-wallet-adjustments", JSON.stringify([transaction])); }
+    } catch (err) {
 
-    onSaved(`${type === "credit" ? "Credit" : "Debit"} of ₹${Number(amount).toLocaleString("en-IN")} saved as a demo transaction.`);
+      setError(getErrorMessage(err, "Wallet adjustment failed. Please try again."));
+
+      setReview(false);
+
+    } finally {
+
+      setSaving(false);
+
+    }
 
   };
 
   return (
 
-    <DialogShell title="Wallet adjustment" subtitle="Credit or debit a retailer wallet. Demo only — no real money moves." icon={Wallet} onClose={onClose}
+    <DialogShell title="Wallet adjustment" subtitle="Credit or debit a retailer wallet. The balance updates immediately." icon={Wallet} onClose={onClose}
 
-      footer={<><button className={secondaryBtn} onClick={review ? () => setReview(false) : onClose}>{review ? "Back to edit" : "Cancel"}</button><button className={primaryBtn} onClick={review ? save : validate}><ShieldCheck size={17}/>{review ? "Confirm demo adjustment" : "Review & confirm"}</button></>}>
+      footer={<><button className={secondaryBtn} disabled={saving} onClick={review ? () => setReview(false) : onClose}>{review ? "Back to edit" : "Cancel"}</button><button className={`${primaryBtn} disabled:opacity-60`} disabled={saving || loadingRetailers || !retailers.length} onClick={review ? save : validate}><ShieldCheck size={17}/>{review ? (saving ? "Saving..." : "Confirm adjustment") : "Review & confirm"}</button></>}>
 
       {review ? (
 
         <div className="space-y-4">
 
-          <p className="rounded-xl bg-brand-primary-light p-4 text-[13px] text-app-text">Please review the details below. Confirming saves a <strong>local demo transaction only</strong>.</p>
+          <p className="rounded-xl bg-brand-primary-light p-4 text-[13px] text-app-text">Please review the details below. Confirming will <strong>update the retailer's wallet balance</strong>.</p>
 
-          {[["Retailer", retailer],["Adjustment", type === "credit" ? "Add balance (Credit)" : "Deduct (Debit)"],["Amount", `₹${Number(amount).toLocaleString("en-IN")}`],["Payment mode", mode],["Reference", reference],["Remarks", remarks || "—"]].map(([label, value]) => <div key={label} className="flex justify-between gap-4 border-b border-app-border py-2 text-[13px]"><span className="text-app-text-secondary">{label}</span><strong className="text-right text-app-text">{value}</strong></div>)}
+          {[["Retailer", retailerLabel],["Adjustment", type === "credit" ? "Add balance (Credit)" : "Deduct (Debit)"],["Amount", `₹${Number(amount).toLocaleString("en-IN")}`],["Payment mode", mode],["Reference", reference],["Remarks", remarks || "—"]].map(([label, value]) => <div key={label} className="flex justify-between gap-4 border-b border-app-border py-2 text-[13px]"><span className="text-app-text-secondary">{label}</span><strong className="text-right text-app-text">{value}</strong></div>)}
 
         </div>
 
@@ -776,7 +860,7 @@ function WalletDialog({ onClose, onSaved }) {
 
         <div className="space-y-5">
 
-          <div><label className={fieldLabel}>Retailer <span className="text-red-600">*</span></label><select className={fieldClass} value={retailer} onChange={(e) => setRetailer(e.target.value)}>{retailerOptions.map((item) => <option key={item}>{item}</option>)}</select></div>
+          <div><label className={fieldLabel}>Retailer <span className="text-red-600">*</span></label><select className={fieldClass} value={retailerId} disabled={loadingRetailers || !retailers.length} onChange={(e) => setRetailerId(e.target.value)}>{loadingRetailers ? <option value="">Loading retailers...</option> : retailers.length ? retailers.map((item) => <option key={item.id} value={item.id}>{item.shop} · {item.id}</option>) : <option value="">No retailers found</option>}</select>{selectedRetailer && <p className="mt-1 text-[11px] text-app-text-secondary">Current balance: {formatINR(selectedRetailer.wallet)}</p>}</div>
 
           <div className="grid grid-cols-1 gap-1 rounded-xl bg-app-surface-muted p-1 min-[420px]:grid-cols-2">
 
@@ -820,11 +904,15 @@ function RetailerDialog({ onClose, onSaved }) {
 
   const [error, setError] = useState("");
 
+  const [saving, setSaving] = useState(false);
+
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const submit = (e) => {
+  const submit = async (e) => {
 
     e.preventDefault();
+
+    if (saving) return;
 
     const { business, owner, mobile, email, address, pan, gst, password } = form;
 
@@ -840,15 +928,31 @@ function RetailerDialog({ onClose, onSaved }) {
 
     if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) { setError("Password must have at least 8 characters, including letters and numbers."); return; }
 
-    const entry = { id: "RT" + Date.now().toString().slice(-6), business, owner, mobile, email, address, panMasked: pan.slice(0,2).toUpperCase() + "XXXXXX" + pan.slice(-2).toUpperCase(), gstMasked: gst ? gst.slice(0,2) + "XXXXXXXX" + gst.slice(-3) : "", status: form.status, createdAt: new Date().toISOString() };
+    setError("");
 
-    // Password is deliberately not saved to localStorage. Real account creation requires a backend.
+    setSaving(true);
 
-    try { const old = JSON.parse(localStorage.getItem("verifyhub-demo-retailers") || "[]"); localStorage.setItem("verifyhub-demo-retailers", JSON.stringify([entry, ...old])); }
+    try {
 
-    catch { localStorage.setItem("verifyhub-demo-retailers", JSON.stringify([entry])); }
+      const { data } = await api.post("/admin/retailers", {
 
-    onSaved(`${business} added to local demo retailers. Backend login credentials have not been created.`);
+        shop: business.trim(), owner: owner.trim(), mobile, email: email.trim(), address: address.trim(),
+
+        pan: pan.toUpperCase(), gst: gst ? gst.toUpperCase() : undefined, password, status: form.status.toLowerCase(),
+
+      });
+
+      onSaved(`${business.trim()} (${data?.data?.id}) onboarded. They can now log in with the mobile/email and password you set.`);
+
+    } catch (err) {
+
+      setError(getErrorMessage(err, "Unable to create retailer. Please try again."));
+
+    } finally {
+
+      setSaving(false);
+
+    }
 
   };
 
@@ -856,7 +960,7 @@ function RetailerDialog({ onClose, onSaved }) {
 
     <DialogShell wide title="Add new retailer" subtitle="Create a partner account with dashboard login credentials." icon={UserRoundPlus} onClose={onClose}
 
-      footer={<><button type="button" onClick={onClose} className={secondaryBtn}>Cancel</button><button type="submit" form="retailer-create-form" className={primaryBtn}><UserRoundPlus size={17}/>Create retailer</button></>}>
+      footer={<><button type="button" onClick={onClose} className={secondaryBtn}>Cancel</button><button type="submit" form="retailer-create-form" disabled={saving} className={`${primaryBtn} disabled:opacity-60`}><UserRoundPlus size={17}/>{saving ? "Creating..." : "Create retailer"}</button></>}>
 
       <form id="retailer-create-form" onSubmit={submit} className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
 
@@ -870,17 +974,17 @@ function RetailerDialog({ onClose, onSaved }) {
 
         <div className="sm:col-span-2"><label className={fieldLabel}>Business address <span className="text-red-600">*</span></label><textarea rows={3} className={`${fieldClass} h-auto resize-y py-3`} value={form.address} onChange={(e) => set("address",e.target.value)} placeholder="Shop no., street, city, state - PIN"/></div>
 
-        <div><label className={fieldLabel}>PAN number <span className="text-red-600">*</span></label><input maxLength={10} className={`${fieldClass} uppercase`} value={form.pan} onChange={(e) => set("pan",e.target.value.toUpperCase())} placeholder="ABCPK1234L"/><p className="mt-1 text-[11px] text-app-text-secondary">Stored masked in demo listings.</p></div>
+        <div><label className={fieldLabel}>PAN number <span className="text-red-600">*</span></label><input maxLength={10} className={`${fieldClass} uppercase`} value={form.pan} onChange={(e) => set("pan",e.target.value.toUpperCase())} placeholder="ABCPK1234L"/><p className="mt-1 text-[11px] text-app-text-secondary">10 characters, e.g. ABCPK1234L.</p></div>
 
         <div><label className={fieldLabel}>GST number <span className="font-normal text-app-text-secondary">Optional</span></label><input maxLength={15} className={`${fieldClass} uppercase`} value={form.gst} onChange={(e) => set("gst",e.target.value.toUpperCase())} placeholder="24ABCPK1234L1Z5"/></div>
 
         <div><label className={fieldLabel}>Login password <span className="text-red-600">*</span></label><div className="relative"><input type={showPassword ? "text" : "password"} className={`${fieldClass} pr-12`} value={form.password} onChange={(e) => set("password",e.target.value)} placeholder="Min. 8 chars, letters & numbers"/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-app-text">{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></div>
 
-        <div><label className={fieldLabel}>Retailer status</label><select className={fieldClass} value={form.status} onChange={(e) => set("status",e.target.value)}><option value="Active">Active — can log in</option><option value="Inactive">Inactive — login disabled</option><option value="Pending">Pending approval</option></select></div>
+        <div><label className={fieldLabel}>Retailer status</label><select className={fieldClass} value={form.status} onChange={(e) => set("status",e.target.value)}><option value="Active">Active — can log in</option><option value="Inactive">Inactive — login disabled</option></select></div>
 
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-[12px] text-red-700 sm:col-span-2">{error}</p>}
 
-        <p className="text-[11px] leading-5 text-app-text-secondary sm:col-span-2">Frontend demo: this saves a masked retailer record in this browser only. It does not create a real login account or transmit credentials.</p>
+        <p className="text-[11px] leading-5 text-app-text-secondary sm:col-span-2">This creates a real retailer account with a ₹0 wallet. The retailer can log in immediately if the status is Active.</p>
 
       </form>
 
@@ -898,7 +1002,33 @@ export default function Overview() {
 
   const [toast, setToast] = useState("");
 
-  const finish = (message) => { setActiveDialog(null); setToast(message); };
+  const [overview, setOverview] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const [loadError, setLoadError] = useState("");
+
+  const loadOverview = useCallback(() => api.get("/admin/overview")
+
+    .then(({ data }) => { setOverview(data?.data ?? null); setLoadError(""); })
+
+    .catch((err) => setLoadError(getErrorMessage(err, "Unable to load dashboard data.")))
+
+    .finally(() => setLoading(false)), []);
+
+  useEffect(() => { loadOverview(); }, [loadOverview]);
+
+  const retry = () => { setLoading(true); setLoadError(""); loadOverview(); };
+
+  // Refresh the dashboard so new balances / retailers are reflected right away.
+
+  const finish = (message) => { setActiveDialog(null); setToast(message); loadOverview(); };
+
+  const firstName = getUser()?.name?.split(" ")[0] || "Admin";
+
+  const totalRetailers = overview?.kpis?.total_retailers?.value;
+
+  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
 
@@ -908,9 +1038,9 @@ export default function Overview() {
 
         <div>
 
-          <h1 className="text-[25px] font-bold tracking-tight text-app-text sm:text-[28px]">Good afternoon, Arvind</h1>
+          <h1 className="text-[25px] font-bold tracking-tight text-app-text sm:text-[28px]">{greeting()}, {firstName}</h1>
 
-          <p className="mt-1.5 text-[13px] text-app-text-secondary">Platform performance across 12 retailers · Friday, 23 October 2026</p>
+          <p className="mt-1.5 text-[13px] text-app-text-secondary">{totalRetailers === undefined ? "Platform performance" : `Platform performance across ${formatCount(totalRetailers)} ${totalRetailers === 1 ? "retailer" : "retailers"}`} · {today}</p>
 
         </div>
 
@@ -926,37 +1056,49 @@ export default function Overview() {
 
       </div>
 
+      {loadError && (
+
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700">
+
+          <span>{loadError}</span>
+
+          <button type="button" onClick={retry} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-[12px] font-semibold text-red-700 hover:bg-red-100"><RefreshCw size={15} />Retry</button>
+
+        </div>
+
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-        {metrics.map((item) => <MetricCard key={item.label} item={item} />)}
+        {buildMetrics(overview?.kpis).map((item) => <MetricCard key={item.label} item={item} />)}
 
       </div>
 
       <div className="mt-5 grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.95fr)_minmax(350px,1fr)]">
 
-        <TrendPanel navigate={navigate} />
+        <TrendPanel navigate={navigate} monthly={overview?.monthly_trends ?? []} />
 
-        <CategoryPanel />
+        <CategoryPanel distribution={overview?.category_distribution} />
 
       </div>
 
       <div className="mt-5 grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.95fr)_minmax(350px,1fr)]">
 
-        <RevenuePanel />
+        <RevenuePanel analytics={overview?.revenue_analytics} monthly={overview?.revenue_analytics?.monthly ?? []} />
 
-        <SuccessPanel />
+        <SuccessPanel rates={overview?.success_rates} hasVerifications={Number(overview?.kpis?.total_verifications?.value) > 0} />
 
       </div>
 
       <div className="mt-5 grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.95fr)_minmax(350px,1fr)]">
 
-        <ActivityPanel navigate={navigate} />
+        <ActivityPanel navigate={navigate} activity={overview?.recent_activity} loading={loading} />
 
         <div className="flex min-w-0 flex-col gap-5">
 
-          <RetailersPanel />
+          <RetailersPanel retailers={overview?.top_retailers} loading={loading} />
 
-          <AlertsPanel navigate={navigate} />
+          <AlertsPanel navigate={navigate} fundRequests={overview?.alerts?.fund_requests} loading={loading} />
 
         </div>
 

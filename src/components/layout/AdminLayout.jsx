@@ -11,6 +11,7 @@ import {
 
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { logout } from "../../api";
 
 const modalContent = {
   logout: {
@@ -110,7 +111,7 @@ export default function AdminLayout() {
     window.dispatchEvent(new Event("verifyhub-demo-reset"));
   };
 
-  const confirmAction = () => {
+  const confirmAction = async () => {
     const action = activeModal;
     setActiveModal(null);
     setMobileOpen(false);
@@ -126,8 +127,8 @@ export default function AdminLayout() {
       action === "expiry" ||
       action === "retailer"
     ) {
-      // Demo navigation only.
-      // Replace with backend session invalidation when integrated.
+      // Revoke the API token; otherwise the login page sends the user straight back here.
+      await logout();
       navigate("/", { replace: true });
     }
   };

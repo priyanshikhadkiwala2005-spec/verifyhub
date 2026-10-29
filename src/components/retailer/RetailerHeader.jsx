@@ -1,6 +1,9 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import api, { ACCOUNT_UPDATED_EVENT } from "../../api";
+import { getUser, updateStoredUser } from "../../auth";
+import useNotifications from "../../hooks/useNotifications";
 import {
   Menu,
   Moon,
@@ -15,11 +18,8 @@ import {
   Info,
   CircleCheck,
   TriangleAlert,
-  ArrowLeftRight,
   Clock3,
-  RefreshCcw,
   X,
-  ShieldCheck,
 } from "lucide-react";
 
 const pageNames = {
@@ -34,56 +34,11 @@ const pageNames = {
   profile: "Profile",
 };
 
-const initialNotifications = [
-  {
-    id: 1,
-    type: "success",
-    title: "Verification successful",
-    description: "Your recent Aadhaar verification was completed.",
-    time: "2 hr ago",
-    read: false,
-  },
-  {
-    id: 2,
-    type: "info",
-    title: "Wallet top-up request",
-    description: "Your ₹5,000 top-up request is pending approval.",
-    time: "3 hr ago",
-    read: false,
-  },
-  {
-    id: 3,
-    type: "warning",
-    title: "Aadhaar OTP latency",
-    description: "OTP delivery may take longer than usual (demo).",
-    time: "5 hr ago",
-    read: true,
-  },
-];
-
-const notificationKey = "verifyhub-retailer-notifications-v1";
-
-function readNotifications() {
-  try {
-    const saved = JSON.parse(
-      localStorage.getItem(notificationKey) || "null"
-    );
-
-    return Array.isArray(saved)
-      ? saved
-      : initialNotifications;
-  } catch {
-    return initialNotifications;
-  }
-}
-
 export default function RetailerHeader({
   setMobileOpen = () => {},
   darkMode = false,
   setDarkMode = () => {},
   onLogout,
-  onSwitchAdmin,
-  onResetDemo,
   onSessionExpiry,
 }) {
   const navigate = useNavigate();
@@ -100,19 +55,33 @@ export default function RetailerHeader({
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [modal, setModal] = useState(null);
-  const [notifications, setNotifications] =
-    useState(readNotifications);
+  const { notifications, unreadCount, markRead, markAllRead, reload: reloadNotifications } = useNotifications();
 
-  const unreadCount = notifications.filter(
-    (item) => !item.read
-  ).length;
+  // Name, shop and wallet balance come from GET /auth/me (the stored login user
+  // is shown first so the header never flashes placeholder text).
+  const [account, setAccount] = useState(getUser);
+  const loadAccount = useCallback(() => {
+    api.get("/auth/me")
+      .then(({ data }) => {
+        const me = data?.data;
+        if (!me) return;
+        setAccount((old) => ({ ...old, ...me }));
+        updateStoredUser({ name: me.name, shop: me.shop, email: me.email, mobile: me.mobile, wallet: me.wallet });
+      })
+      .catch(() => {});
+  }, []);
 
+  // Refresh on every page change and whenever a request changes the balance or profile.
+  useEffect(() => { loadAccount(); }, [loadAccount, location.pathname]);
   useEffect(() => {
-    localStorage.setItem(
-      notificationKey,
-      JSON.stringify(notifications)
-    );
-  }, [notifications]);
+    window.addEventListener(ACCOUNT_UPDATED_EVENT, loadAccount);
+    return () => window.removeEventListener(ACCOUNT_UPDATED_EVENT, loadAccount);
+  }, [loadAccount]);
+
+  const accountName = account?.name || "Retailer";
+  const accountShop = account?.shop || "";
+  const accountInitials = accountName.split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase();
+  const walletBalance = account?.wallet;
 
   useEffect(() => {
     const handleOutside = (event) => {
@@ -142,23 +111,12 @@ export default function RetailerHeader({
     };
   }, []);
 
-  const markAllRead = () => {
-    setNotifications((prev) =>
-      prev.map((item) => ({
-        ...item,
-        read: true,
-      }))
-    );
-  };
-
-  const markRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, read: true }
-          : item
-      )
-    );
+  const openNotification = (item) => {
+    if (!item.read) markRead(item.id);
+    if (item.link) {
+      setNotificationOpen(false);
+      navigate(item.link);
+    }
   };
 
   const closeProfile = () => {
@@ -168,16 +126,6 @@ export default function RetailerHeader({
   const handleProfile = () => {
     closeProfile();
     navigate("/retailer/profile");
-  };
-
-  const handleSwitchAdmin = () => {
-    closeProfile();
-
-    if (typeof onSwitchAdmin === "function") {
-      onSwitchAdmin();
-    } else {
-      navigate("/super-admin/overview");
-    }
   };
 
   const handleModalAction = () => {
@@ -201,20 +149,6 @@ export default function RetailerHeader({
       }
     }
 
-    if (modal === "reset") {
-      localStorage.removeItem(notificationKey);
-      setNotifications(initialNotifications);
-
-      if (typeof onResetDemo === "function") {
-        onResetDemo();
-      }
-
-      window.dispatchEvent(
-        new CustomEvent("verifyhub-retailer-demo-reset")
-      );
-
-      setModal(null);
-    }
   };
 
   const menuClass =
@@ -224,23 +158,16 @@ export default function RetailerHeader({
     logout: {
       title: "Sign out of VerifyHub?",
       description:
-        "Your demo data stays saved in this browser. You can sign back in anytime.",
+        "You will be signed out of this browser. You can sign back in anytime.",
       button: "Sign out",
       icon: LogOut,
     },
     session: {
       title: "Simulate session expiry?",
       description:
-        "This demo will redirect you to the login page. No real authentication session is changed.",
+        "This ends your current session and returns you to the login page, as happens when a session expires.",
       button: "Expire session",
       icon: Clock3,
-    },
-    reset: {
-      title: "Reset demo data?",
-      description:
-        "This will reset the retailer header notifications. Other demo records are reset only if connected through the layout.",
-      button: "Reset data",
-      icon: RefreshCcw,
     },
   };
 
@@ -287,7 +214,7 @@ export default function RetailerHeader({
           >
             <Wallet size={18} className="text-primary" />
             <span className="text-[12px] font-bold sm:text-[14px]">
-              ₹2,920
+              {walletBalance === undefined || walletBalance === null ? "—" : `₹${Number(walletBalance).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`}
             </span>
           </button>
 
@@ -310,6 +237,7 @@ export default function RetailerHeader({
             <button
               type="button"
               onClick={() => {
+                if (!notificationOpen) reloadNotifications();
                 setNotificationOpen(!notificationOpen);
                 setProfileOpen(false);
               }}
@@ -342,6 +270,11 @@ export default function RetailerHeader({
                 </div>
 
                 <div className="max-h-[420px] overflow-y-auto overscroll-contain">
+                  {notifications.length === 0 && (
+                    <p className="px-5 py-10 text-center text-[13px] text-app-text-secondary">
+                      No notifications yet.
+                    </p>
+                  )}
                   {notifications.map((item) => {
                     const Icon =
                       item.type === "warning"
@@ -361,7 +294,7 @@ export default function RetailerHeader({
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => markRead(item.id)}
+                        onClick={() => openNotification(item)}
                         className={`flex w-full items-start gap-4 border-b border-app-border px-5 py-5 text-left transition last:border-0 hover:bg-app-surface-muted ${
                           item.read
                             ? "bg-app-surface"
@@ -411,16 +344,16 @@ export default function RetailerHeader({
               className="flex items-center gap-2 rounded-lg p-1 text-left hover:bg-app-surface-muted sm:gap-3"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#10945d] text-[12px] font-bold text-white">
-                RP
+                {accountInitials}
               </div>
 
               <div className="hidden min-w-0 lg:block">
                 <p className="text-[12px] font-semibold text-app-text">
-                  Rakesh Patel
+                  {accountName}
                 </p>
 
                 <p className="max-w-[175px] truncate text-[11px] text-app-text-secondary">
-                  Shree Ganesh Mobile Point
+                  {accountShop}
                 </p>
               </div>
 
@@ -435,11 +368,11 @@ export default function RetailerHeader({
               <div className="absolute right-0 top-[52px] z-50 w-[min(295px,calc(100vw-24px))] overflow-hidden rounded-xl border border-app-border bg-app-surface p-2 shadow-xl">
                 <div className="border-b border-app-border px-3 py-3">
                   <p className="text-[14px] font-bold text-app-text">
-                    Rakesh Patel
+                    {accountName}
                   </p>
 
                   <p className="mt-1 text-[12px] text-app-text-secondary">
-                    Shree Ganesh Mobile Point
+                    {accountShop}{account?.id ? ` · ${account.id}` : ""}
                   </p>
                 </div>
 
@@ -454,22 +387,6 @@ export default function RetailerHeader({
 
                 <button
                   type="button"
-                  onClick={handleSwitchAdmin}
-                  className={menuClass}
-                >
-                  <ArrowLeftRight size={17} />
-
-                  <span className="flex-1">
-                    Switch to Super Admin view
-                  </span>
-
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                    DEMO
-                  </span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => {
                     closeProfile();
                     setModal("session");
@@ -478,18 +395,6 @@ export default function RetailerHeader({
                 >
                   <Clock3 size={17} />
                   Simulate session expiry
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeProfile();
-                    setModal("reset");
-                  }}
-                  className={menuClass}
-                >
-                  <RefreshCcw size={17} />
-                  Reset demo data
                 </button>
 
                 <div className="my-2 border-t border-app-border" />

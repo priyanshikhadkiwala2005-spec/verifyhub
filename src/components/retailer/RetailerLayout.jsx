@@ -5,6 +5,7 @@ import { LogOut, X } from "lucide-react";
 
 import RetailerSidebar from "./RetailerSidebar";
 import RetailerHeader from "./RetailerHeader";
+import { logout } from "../../api";
 
 export default function RetailerLayout() {
   const navigate = useNavigate();
@@ -60,9 +61,10 @@ export default function RetailerLayout() {
     };
   }, [showLogoutModal]);
 
-  const confirmLogout = () => {
+  const confirmLogout = async () => {
     setShowLogoutModal(false);
     setMobileOpen(false);
+    await logout();
     navigate("/", { replace: true });
   };
 
@@ -85,6 +87,7 @@ export default function RetailerLayout() {
           darkMode={darkMode}
           setDarkMode={setDarkMode}
           onLogout={() => setShowLogoutModal(true)}
+          onSessionExpiry={confirmLogout}
         />
 
     

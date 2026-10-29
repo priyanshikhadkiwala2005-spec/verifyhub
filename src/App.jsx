@@ -8,6 +8,7 @@ import {
 
 // Login Page
 import Login from "./pages/auth/Login.jsx";
+import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
 
 // Super Admin Layout
 import AdminLayout from "./components/layout/AdminLayout.jsx";
@@ -22,10 +23,7 @@ import VerificationRecords from "./pages/super-admin/VerificationRecords.jsx";
 import Reports from "./pages/super-admin/Reports.jsx";
 import Settings from "./pages/super-admin/Settings.jsx";
 
-// Retailer Layout
 import RetailerLayout from "./components/retailer/RetailerLayout.jsx";
-
-// Retailer Pages
 import RetailerOverview from "./pages/retailer/Overview.jsx";
 import CompleteKYC from "./pages/retailer/CompleteKYC.jsx";
 import AadhaarVerification from "./pages/retailer/AadhaarVerification.jsx";
@@ -49,7 +47,11 @@ export default function App() {
         ============================== */}
         <Route
           path="/super-admin"
-          element={<AdminLayout />}
+          element={
+            <ProtectedRoute role="admin">
+              <AdminLayout />
+            </ProtectedRoute>
+          }
         >
           <Route
             index
@@ -102,7 +104,11 @@ export default function App() {
         ============================== */}
         <Route
           path="/retailer"
-          element={<RetailerLayout />}
+          element={
+            <ProtectedRoute role="retailer">
+              <RetailerLayout />
+            </ProtectedRoute>
+          }
         >
           <Route
             index

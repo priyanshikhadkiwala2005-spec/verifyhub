@@ -227,11 +227,11 @@ export default function RetailerSidebar({
             {!collapsed && (
               <div>
                 <p className="text-[12px] font-semibold text-white">
-                  Demo environment
+                  Sandbox KYC gateway
                 </p>
 
                 <p className="mt-1 text-[11px] leading-5">
-                  Synthetic data · masked identifiers · no live KYC calls
+                  Live wallet &amp; records · masked identifiers · simulated provider responses
                 </p>
               </div>
             )}
